@@ -410,7 +410,8 @@ class App(Foundation):
     def validation(self):
         # primitive validation
         date_now = datetime.now()
-        return date_now.year == 2024 and (date_now.month <= 12)
+        # Обновлено для работы в 2025 году и далее
+        return date_now.year >= 2024
 
     def load_config(self, config):
         self.config = self._prepare_config(config)

@@ -30,7 +30,15 @@ def main():
 
     app = App()
 
-    if IS_DEV or app.validation():
+    validation_result = app.validation()
+    if not validation_result:
+        log("App validation failed - app is outdated")
+        log_save('An App is outdated')
+        if is_prod:
+            input('Press Enter to exit...')
+        sys.exit(1)
+
+    if IS_DEV or validation_result:
         game_path = app.config['game_path']
         has_telegram_token = 'telegram_token' in app.config
         telegram_bot = None
@@ -109,8 +117,6 @@ def main():
             if has_telegram_token and telegram_bot:
                 # Wait for the bot thread to finish
                 telegram_bot.join()
-    else:
-        log_save('An App is outdated')
 
 
 if __name__ == '__main__':
