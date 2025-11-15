@@ -1,0 +1,79 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Позволяет запускать вручную
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.7'
+    
+    - name: Install Chocolatey (if needed)
+      run: |
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+      shell: powershell
+    
+    - name: Install Tesseract OCR
+      run: |
+        choco install tesseract -y
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+      shell: powershell
+    
+    - name: Verify Tesseract installation
+      run: |
+        $tesseractPath = "C:\Program Files\Tesseract-OCR"
+        if (Test-Path "$tesseractPath\tesseract.exe") {
+          Write-Host "Tesseract found at: $tesseractPath"
+          tesseract --version
+        } else {
+          Write-Host "Tesseract not found, checking alternative locations..."
+          Get-ChildItem "C:\Program Files*" -Filter "tesseract.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 FullName
+        }
+      shell: powershell
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Build executable
+      run: |
+        python build.py
+      env:
+        TESSERACT_PATH: 'C:\Program Files\Tesseract-OCR'
+        CI: 'true'
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: windows-build
+        path: dist/main/**
+        retention-days: 30
+    
+    - name: Create release archive
+      run: |
+        cd dist
+        Compress-Archive -Path main\* -DestinationPath RaidSL-Telegram-Bot.zip -Force
+      shell: powershell
+    
+    - name: Upload release archive
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-zip
+        path: dist/RaidSL-Telegram-Bot.zip
+        retention-days: 30
+

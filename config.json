@@ -1,0 +1,322 @@
+{
+  "start_immediate": 1,
+  "game_path": "",
+  "telegram_token": "",
+  "lang": "",
+  "tasks": [
+    {
+      "task": "rewards",
+      "enable": 1
+    },
+    {
+      "task": "arena_live",
+      "enable": 1,
+      "props": {
+        "refill": 1,
+        "idle_after_defeat": 30,
+        "pool": [
+          {
+            "name": "Armanz",
+            "role": "s",
+            "priority": 2
+          },
+          {
+            "name": "Sun Wukong",
+            "role": "a",
+            "priority": 2
+          },
+          {
+            "name": "Duchess Lilitu",
+            "role": "s",
+            "priority": 2
+          },
+          {
+            "name": "Arbiter",
+            "role": "s",
+            "priority": 2
+          },
+          {
+            "name": "Tormin",
+            "role": "s",
+            "priority": 2
+          },
+          {
+            "name": "Leorius the Proud",
+            "role": "a",
+            "priority": 2
+          },
+          {
+            "name": "Mortu-Macaab",
+            "role": "a",
+            "priority": 1
+          },
+          {
+            "name": "Cupidus",
+            "role": "a",
+            "priority": 0
+          },
+          {
+            "name": "Venus",
+            "role": "s",
+            "priority": 0
+          },
+          {
+            "name": "Rotos",
+            "role": "a"
+          },
+          {
+            "name": "Ramantu Drakesblood",
+            "role": "s",
+            "priority": 0
+          },
+          {
+            "name": "Deathknight",
+            "role": "a",
+            "priority": 2
+          },
+          {
+            "name": "Pythion",
+            "role": "s"
+          },
+          {
+            "name": "Lydia the Deathsiren",
+            "role": "s"
+          },
+          {
+            "name": "Mighty Ukko",
+            "role": "s"
+          }
+        ],
+        "leaders": [
+          "Arbiter",
+          "Armanz",
+          "Sun Wukong",
+          "Mortu-Macaab",
+          "Duchess Lilitu",
+          "Mighty Ukko",
+          "Lydia the Deathsiren",
+          "Pythion",
+          "Venus"
+        ]
+      }
+    },
+    {
+      "task": "arena_classic",
+      "enable": 1,
+      "props": {
+        "refill": 0,
+        "initial_refresh": 1,
+        "battle_time_limit": 300
+      }
+    },
+    {
+      "task": "arena_tag",
+      "enable": 1,
+      "props": {
+        "refill": 0,
+        "initial_refresh":  1,
+        "battle_time_limit": 900
+      }
+    },
+    {
+      "task": "iron_twins",
+      "enable": 1
+    },
+    {
+      "task": "faction_wars",
+      "enable": 1,
+      "props": {
+        "stages": {
+          "3": 20
+        }
+      }
+    },
+    {
+      "task": "hydra",
+      "enable": 1,
+      "props": {
+        "runs_limit": 5,
+        "runs": [
+          {
+            "stage": 4,
+            "team_preset": 1,
+            "min_damage": 350,
+            "skip": 0,
+            "priority": {
+              "head_of_decay": 2,
+              "head_of_blight": 1,
+              "head_of_mischief": 0,
+              "head_of_suffering": 0,
+              "head_of_torment": 0,
+              "head_of_wrath": 0
+            }
+          },
+          {
+            "stage": 3,
+            "team_preset": 2,
+            "min_damage": 35,
+            "skip": 0,
+            "priority": {
+              "head_of_decay": 2,
+              "head_of_blight": 1,
+              "head_of_mischief": 0,
+              "head_of_suffering": 0,
+              "head_of_torment": 0,
+              "head_of_wrath": 0
+            }
+          },
+          {
+            "stage": 2,
+            "team_preset": 3,
+            "min_damage": 35,
+            "skip": 0,
+            "priority": {
+              "head_of_decay": 2,
+              "head_of_blight": 1,
+              "head_of_mischief": 0,
+              "head_of_suffering": 0,
+              "head_of_torment": 0,
+              "head_of_wrath": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "task": "dungeon",
+      "title": "Minotaur",
+      "enable": 1,
+      "props": {"locations": [{"id": 1}], "refill": 0}
+    },
+    {
+      "task": "dungeon",
+      "title": "Ice Golem",
+      "enable": 1,
+      "props": {"locations": [{"id": 2}], "refill": 0}
+    },
+    {
+      "task": "dungeon",
+      "title": "Spider",
+      "enable": 1,
+      "props": {"locations": [{"id": 3}], "refill": 0}
+    },
+    {
+      "task": "dungeon",
+      "title": "Dragon",
+      "enable": 1,
+      "props": {"locations": [{"id": 4}], "refill": 0}
+    },
+    {
+      "task": "dungeon",
+      "title": "Fire Knight",
+      "enable": 1,
+      "props": {"locations": [{"id": 5}], "refill": 0}
+    },
+    {
+      "task": "dungeon",
+      "title": "Sand Devil",
+      "enable": 1,
+      "props": {"locations": [{"id": 6}], "refill": 0}
+    },
+    {
+      "task": "dungeon",
+      "title": "Phantom",
+      "enable": 1,
+      "props": {"locations": [{"id": 7}], "refill": 0}
+    },
+    {
+      "task": "dungeon",
+      "title": "Ice Golem Normal",
+      "enable": 1,
+      "props": {"locations": [{"id": 2, "difficulty": "normal"}], "refill": 0}
+    },
+    {
+      "task": "demon_lord",
+      "enable": 1,
+      "props": {
+        "stages": [6, 5, 4, 3]
+      }
+    },
+    {
+      "task": "doom_tower",
+      "enable": 1,
+      "props": {
+        "bosses": [1, 4, 2],
+        "difficulties": ["hard", "normal"]
+      }
+    },
+    {
+      "task": "daily_quests",
+      "enable": 1
+    }
+  ],
+  "presets": [
+    {
+      "name": "noon",
+      "commands": [
+        "demon_lord",
+        "rewards",
+        "doom_tower",
+        "arena_classic",
+        "daily_quests"
+      ]
+    },
+    {
+      "name": "primary",
+      "commands": [
+        "arena_live",
+        "arena_classic",
+        "arena_tag",
+        "rewards",
+        "faction_wars",
+        "rewards",
+        "arena_tag",
+        "rewards",
+        "arena_classic",
+        "iron_twins",
+        "daily_quests",
+        "rewards",
+        "doom_tower"
+      ]
+    },
+    {
+      "name": "primary with sand devil",
+      "commands": [
+        "arena_live",
+        "arena_classic",
+        "arena_tag",
+        "rewards",
+        "faction_wars",
+        "rewards",
+        "arena_tag",
+        "rewards",
+        "arena_classic",
+        "iron_twins",
+        "daily_quests",
+        "rewards",
+        "dungeon_sand_devil",
+        "doom_tower"
+      ]
+    },
+    {
+      "name": "primary with minotaur",
+      "commands": [
+        "arena_live",
+        "arena_classic",
+        "arena_tag",
+        "rewards",
+        "faction_wars",
+        "rewards",
+        "arena_tag",
+        "rewards",
+        "arena_classic",
+        "iron_twins",
+        "daily_quests",
+        "rewards",
+        "dungeon_minotaur",
+        "doom_tower"
+      ]
+    }
+  ],
+  "after_each": ["rewards"]
+}
