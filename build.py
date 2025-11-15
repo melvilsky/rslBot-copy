@@ -82,13 +82,34 @@ def build():
     # subprocess.call(r"pyinstaller main.py")
     # subprocess.call(r"pyinstaller --distpath ./test main-one-file.spec")
     # subprocess.call(r"pyinstaller --distpath ./dist main.spec")
-    subprocess.call(r"pyinstaller main.spec")
+    result = subprocess.call(r"pyinstaller main.spec")
+    if result != 0:
+        raise Exception(f"PyInstaller failed with exit code {result}")
+    return result
 
 
 def copy_files():
-    shutil.copytree('images/needles', 'dist/main/images/needles')
-    shutil.copytree('translations', 'dist/main/translations')
-    shutil.copy('config.json', 'dist/main')
+    main_dir = 'dist/main'
+    if not os.path.exists(main_dir):
+        raise Exception(f"Build directory '{main_dir}' does not exist. Build may have failed.")
+    
+    # Создаем директорию для images если её нет
+    images_dir = os.path.join(main_dir, 'images')
+    os.makedirs(images_dir, exist_ok=True)
+    
+    # Копируем images/needles (для Python 3.7 используем проверку существования)
+    needles_dest = os.path.join(images_dir, 'needles')
+    if os.path.exists(needles_dest):
+        shutil.rmtree(needles_dest)
+    shutil.copytree('images/needles', needles_dest)
+    
+    # Копируем translations
+    translations_dest = os.path.join(main_dir, 'translations')
+    if os.path.exists(translations_dest):
+        shutil.rmtree(translations_dest)
+    shutil.copytree('translations', translations_dest)
+    
+    shutil.copy('config.json', main_dir)
 
 
 def create_symlink():
@@ -110,13 +131,35 @@ def create_symlink():
 # Проверка, запущено ли в CI/CD окружении
 is_ci = os.environ.get('CI') == 'true' or os.environ.get('GITHUB_ACTIONS') == 'true'
 
-remove_files_and_folders(folder_path=root_dir, ignore=['.git', 'README.md', 'version.json'])
-build()
-copy_files()
-# create_symlink()
-
-# Git commit только если не в CI/CD
-if not is_ci:
-    git_commit_file(repo_path=bot_path, commit_message="Automatic build update")
-else:
-    print("Skipping git commit in CI/CD environment")
+try:
+    # Очистка dist только если папка существует
+    if os.path.exists(root_dir):
+        remove_files_and_folders(folder_path=root_dir, ignore=['.git', 'README.md', 'version.json'])
+    else:
+        print(f"Directory {root_dir} does not exist, skipping cleanup")
+    
+    # Сборка
+    print("Starting build process...")
+    build()
+    print("Build completed successfully!")
+    
+    # Копирование файлов
+    print("Copying additional files...")
+    copy_files()
+    print("Files copied successfully!")
+    
+    # create_symlink()
+    
+    # Git commit только если не в CI/CD
+    if not is_ci:
+        git_commit_file(repo_path=bot_path, commit_message="Automatic build update")
+    else:
+        print("Skipping git commit in CI/CD environment")
+    
+    print("Build process completed successfully!")
+    
+except Exception as e:
+    print(f"ERROR: Build failed: {e}")
+    import traceback
+    traceback.print_exc()
+    exit(1)

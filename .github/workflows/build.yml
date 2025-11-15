@@ -31,7 +31,9 @@ jobs:
       run: |
         choco install tesseract -y
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        refreshenv
       shell: powershell
+      continue-on-error: false
     
     - name: Verify Tesseract installation
       run: |
@@ -49,6 +51,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+      continue-on-error: false
     
     - name: Build executable
       run: |
@@ -56,6 +59,23 @@ jobs:
       env:
         TESSERACT_PATH: 'C:\Program Files\Tesseract-OCR'
         CI: 'true'
+      continue-on-error: false
+    
+    - name: Verify build output
+      run: |
+        if (Test-Path "dist\main\RaidSL-Telegram-Bot.exe") {
+          Write-Host "Build successful! Executable found."
+          Get-Item "dist\main\RaidSL-Telegram-Bot.exe" | Select-Object Name, Length, LastWriteTime
+        } else {
+          Write-Host "ERROR: Executable not found!"
+          Write-Host "Contents of dist directory:"
+          if (Test-Path "dist") {
+            Get-ChildItem "dist" -Recurse | Select-Object FullName
+          }
+          exit 1
+        }
+      shell: powershell
+      continue-on-error: false
     
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4

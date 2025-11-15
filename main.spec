@@ -24,10 +24,17 @@ def find_tesseract_path():
 tesseract_path = find_tesseract_path()
 print(f'Using Tesseract path: {tesseract_path}')
 
-binaries = [
-    ( tesseract_path, 'vendor/tesseract' ) if os.path.exists(tesseract_path) else None
-]
-binaries = [b for b in binaries if b is not None]  # Удаляем None значения
+# Проверяем существование Tesseract перед добавлением в binaries
+binaries = []
+if tesseract_path and os.path.exists(tesseract_path):
+    tesseract_exe = os.path.join(tesseract_path, 'tesseract.exe')
+    if os.path.exists(tesseract_exe):
+        binaries.append((tesseract_path, 'vendor/tesseract'))
+        print(f'Tesseract found and will be included: {tesseract_exe}')
+    else:
+        print(f'WARNING: Tesseract path exists but tesseract.exe not found at {tesseract_exe}')
+else:
+    print(f'WARNING: Tesseract not found at {tesseract_path}. Build will continue without Tesseract binaries.')
 
 a = Analysis(
     ['main.py'],
