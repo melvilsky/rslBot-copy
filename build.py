@@ -1,7 +1,15 @@
 import os
 import shutil
 import subprocess
-import win32com.client
+import sys
+
+# win32com.client нужен только для создания ярлыков (не используется в CI/CD)
+try:
+    import win32com.client
+    HAS_WIN32COM = True
+except ImportError:
+    HAS_WIN32COM = False
+    print("Warning: win32com.client not available (not needed in CI/CD)")
 
 root_dir = os.path.normpath(os.path.normpath(os.path.join(os.getcwd(), 'dist')))
 name = 'RaidSL-Telegram-Bot'
@@ -82,9 +90,24 @@ def build():
     # subprocess.call(r"pyinstaller main.py")
     # subprocess.call(r"pyinstaller --distpath ./test main-one-file.spec")
     # subprocess.call(r"pyinstaller --distpath ./dist main.spec")
-    result = subprocess.call(r"pyinstaller main.spec")
+    print("Running PyInstaller...")
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Python version: {sys.version}")
+    
+    # Запускаем PyInstaller с выводом в консоль
+    result = subprocess.call(
+        r"pyinstaller main.spec",
+        shell=True,
+        stdout=sys.stdout,
+        stderr=subprocess.STDOUT
+    )
+    
     if result != 0:
+        print(f"\nERROR: PyInstaller failed with exit code {result}")
+        print("Check the output above for details.")
         raise Exception(f"PyInstaller failed with exit code {result}")
+    
+    print("PyInstaller completed successfully!")
     return result
 
 
@@ -113,6 +136,10 @@ def copy_files():
 
 
 def create_symlink():
+    if not HAS_WIN32COM:
+        print("Skipping symlink creation: win32com.client not available")
+        return
+    
     file = f'{name}.lnk'
     original_file_path = os.path.join(root_dir, file)
     symlink_path = os.path.join(bot_path, 'main', 'bot.exe')
@@ -132,19 +159,39 @@ def create_symlink():
 is_ci = os.environ.get('CI') == 'true' or os.environ.get('GITHUB_ACTIONS') == 'true'
 
 try:
+    print("=" * 60)
+    print("BUILD PROCESS STARTED")
+    print("=" * 60)
+    print(f"CI/CD mode: {is_ci}")
+    print(f"Working directory: {os.getcwd()}")
+    print(f"Python executable: {sys.executable}")
+    print("=" * 60)
+    
     # Очистка dist только если папка существует
     if os.path.exists(root_dir):
+        print(f"Cleaning up {root_dir}...")
         remove_files_and_folders(folder_path=root_dir, ignore=['.git', 'README.md', 'version.json'])
     else:
         print(f"Directory {root_dir} does not exist, skipping cleanup")
     
+    # Проверка существования main.spec
+    if not os.path.exists('main.spec'):
+        raise Exception("main.spec file not found!")
+    print("main.spec found, proceeding with build...")
+    
     # Сборка
-    print("Starting build process...")
+    print("\n" + "=" * 60)
+    print("STARTING PYINSTALLER BUILD")
+    print("=" * 60)
     build()
-    print("Build completed successfully!")
+    print("=" * 60)
+    print("BUILD COMPLETED SUCCESSFULLY!")
+    print("=" * 60)
     
     # Копирование файлов
-    print("Copying additional files...")
+    print("\n" + "=" * 60)
+    print("COPYING ADDITIONAL FILES")
+    print("=" * 60)
     copy_files()
     print("Files copied successfully!")
     
@@ -156,10 +203,17 @@ try:
     else:
         print("Skipping git commit in CI/CD environment")
     
-    print("Build process completed successfully!")
+    print("\n" + "=" * 60)
+    print("BUILD PROCESS COMPLETED SUCCESSFULLY!")
+    print("=" * 60)
     
 except Exception as e:
-    print(f"ERROR: Build failed: {e}")
+    print("\n" + "=" * 60)
+    print("BUILD FAILED!")
+    print("=" * 60)
+    print(f"ERROR: {e}")
+    print("=" * 60)
     import traceback
     traceback.print_exc()
-    exit(1)
+    print("=" * 60)
+    sys.exit(1)
