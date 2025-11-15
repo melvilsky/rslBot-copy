@@ -38,25 +38,23 @@ jobs:
         $tesseractPath = "C:\Program Files\Tesseract-OCR"
         $tesseractExe = "$tesseractPath\tesseract.exe"
         
-        # Проверяем стандартный путь
         if (Test-Path $tesseractExe) {
-          Write-Host "✓ Tesseract found at: $tesseractPath"
+          Write-Host "Tesseract found at: $tesseractPath"
           & $tesseractExe --version
           Write-Host "Tesseract installation verified successfully!"
         } else {
           Write-Host "Tesseract not found at standard location, searching..."
           $found = Get-ChildItem "C:\Program Files*" -Filter "tesseract.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($found) {
-            Write-Host "✓ Tesseract found at: $($found.FullName)"
+            Write-Host "Tesseract found at: $($found.FullName)"
             & $found.FullName --version
             $tesseractPath = Split-Path $found.FullName -Parent
           } else {
-            Write-Host "✗ ERROR: Tesseract not found anywhere!"
+            Write-Host "ERROR: Tesseract not found anywhere!"
             exit 1
           }
         }
         
-        # Добавляем в PATH для текущей сессии
         $env:Path = "$tesseractPath;$env:Path"
         Write-Host "Tesseract path added to environment: $tesseractPath"
       shell: powershell
@@ -84,10 +82,10 @@ jobs:
     - name: Verify project files
       run: |
         Write-Host "Checking project structure..."
-        if (Test-Path "main.py") { Write-Host "✓ main.py found" } else { Write-Host "✗ main.py NOT found"; exit 1 }
-        if (Test-Path "main.spec") { Write-Host "✓ main.spec found" } else { Write-Host "✗ main.spec NOT found"; exit 1 }
-        if (Test-Path "build.py") { Write-Host "✓ build.py found" } else { Write-Host "✗ build.py NOT found"; exit 1 }
-        if (Test-Path "config.json") { Write-Host "✓ config.json found" } else { Write-Host "✗ config.json NOT found"; exit 1 }
+        if (Test-Path "main.py") { Write-Host "[OK] main.py found" } else { Write-Host "[ERROR] main.py NOT found"; exit 1 }
+        if (Test-Path "main.spec") { Write-Host "[OK] main.spec found" } else { Write-Host "[ERROR] main.spec NOT found"; exit 1 }
+        if (Test-Path "build.py") { Write-Host "[OK] build.py found" } else { Write-Host "[ERROR] build.py NOT found"; exit 1 }
+        if (Test-Path "config.json") { Write-Host "[OK] config.json found" } else { Write-Host "[ERROR] config.json NOT found"; exit 1 }
         Write-Host "All required files found!"
       shell: powershell
     
