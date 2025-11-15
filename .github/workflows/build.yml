@@ -76,7 +76,8 @@ jobs:
     - name: Verify PyInstaller installation
       run: |
         pyinstaller --version
-        Write-Host "PyInstaller location: $(python -c 'import pyinstaller; import os; print(os.path.dirname(pyinstaller.__file__))')"
+        python -c "import PyInstaller; print('PyInstaller module found')"
+        Write-Host "PyInstaller verification completed"
       shell: powershell
     
     - name: Verify project files
