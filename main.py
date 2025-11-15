@@ -2,6 +2,7 @@ from bot import TelegramBOT
 from classes.App import *
 from locations.live_arena.index import *
 import os
+import sys
 from dotenv import load_dotenv
 
 load_dotenv()
