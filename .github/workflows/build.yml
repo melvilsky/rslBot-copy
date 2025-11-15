@@ -30,22 +30,37 @@ jobs:
     - name: Install Tesseract OCR
       run: |
         choco install tesseract -y
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-        refreshenv
       shell: powershell
       continue-on-error: false
     
     - name: Verify Tesseract installation
       run: |
         $tesseractPath = "C:\Program Files\Tesseract-OCR"
-        if (Test-Path "$tesseractPath\tesseract.exe") {
-          Write-Host "Tesseract found at: $tesseractPath"
-          tesseract --version
+        $tesseractExe = "$tesseractPath\tesseract.exe"
+        
+        # Проверяем стандартный путь
+        if (Test-Path $tesseractExe) {
+          Write-Host "✓ Tesseract found at: $tesseractPath"
+          & $tesseractExe --version
+          Write-Host "Tesseract installation verified successfully!"
         } else {
-          Write-Host "Tesseract not found, checking alternative locations..."
-          Get-ChildItem "C:\Program Files*" -Filter "tesseract.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 FullName
+          Write-Host "Tesseract not found at standard location, searching..."
+          $found = Get-ChildItem "C:\Program Files*" -Filter "tesseract.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            Write-Host "✓ Tesseract found at: $($found.FullName)"
+            & $found.FullName --version
+            $tesseractPath = Split-Path $found.FullName -Parent
+          } else {
+            Write-Host "✗ ERROR: Tesseract not found anywhere!"
+            exit 1
+          }
         }
+        
+        # Добавляем в PATH для текущей сессии
+        $env:Path = "$tesseractPath;$env:Path"
+        Write-Host "Tesseract path added to environment: $tesseractPath"
       shell: powershell
+      continue-on-error: false
     
     - name: Verify Python installation
       run: |
@@ -76,11 +91,23 @@ jobs:
         Write-Host "All required files found!"
       shell: powershell
     
+    - name: Set Tesseract environment variable
+      run: |
+        $tesseractPath = "C:\Program Files\Tesseract-OCR"
+        if (-not (Test-Path "$tesseractPath\tesseract.exe")) {
+          $found = Get-ChildItem "C:\Program Files*" -Filter "tesseract.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            $tesseractPath = Split-Path $found.FullName -Parent
+          }
+        }
+        Write-Host "TESSERACT_PATH=$tesseractPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        Write-Host "Set TESSERACT_PATH to: $tesseractPath"
+      shell: powershell
+    
     - name: Build executable
       run: |
         python build.py
       env:
-        TESSERACT_PATH: 'C:\Program Files\Tesseract-OCR'
         CI: 'true'
         GITHUB_ACTIONS: 'true'
       continue-on-error: false
