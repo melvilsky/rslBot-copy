@@ -33,7 +33,7 @@ class HeroFilter:
     FILTER_TYPE_SMALL = 'small'
 
     PICK_SLOTS = {
-        '1': [100, 350],
+        '1': [120, 385],
         '2': [125, 490],
     }
 
