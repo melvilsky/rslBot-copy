@@ -63,6 +63,13 @@ def main():
                 # Проверяем обновления при запуске
                 app.check_for_updates(telegram_bot=telegram_bot)
                 
+                # Добавляем команду /checkupdate
+                telegram_bot.add({
+                    'command': 'checkupdate',
+                    'description': 'Проверить наличие обновлений',
+                    'handler': lambda upd, ctx: upd.message.reply_text(app.check_update_status(telegram_bot=telegram_bot), parse_mode='HTML')
+                })
+                
                 # Добавляем команду /update
                 telegram_bot.add({
                     'command': 'update',

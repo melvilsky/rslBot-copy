@@ -492,6 +492,59 @@ class App(Foundation):
             import traceback
             traceback.print_exc()
 
+    def check_update_status(self, telegram_bot=None):
+        """
+        Проверяет статус обновлений и возвращает сообщение для пользователя
+        Вызывается по команде /checkupdate из Telegram
+        """
+        try:
+            self.log('Manual update check requested...')
+            update_info = is_update_available()
+            
+            if not update_info:
+                return "❌ Ошибка при проверке обновлений. Проверьте подключение к интернету."
+            
+            if update_info.get('available'):
+                current_version = update_info.get('current_version', 'unknown')
+                latest_version = update_info.get('latest_version', 'unknown')
+                release_url = update_info.get('release_url', '')
+                release_notes = update_info.get('release_notes', '')
+                
+                message = (
+                    f"🔄 Доступно обновление!\n\n"
+                    f"Текущая версия: <b>{current_version}</b>\n"
+                    f"Новая версия: <b>{latest_version}</b>\n"
+                )
+                
+                if release_notes:
+                    notes = release_notes[:300] + "..." if len(release_notes) > 300 else release_notes
+                    message += f"\nЧто нового:\n{notes}\n"
+                
+                if release_url:
+                    message += f"\nПодробнее: {release_url}"
+                
+                message += "\n\nИспользуйте команду /update для обновления"
+                
+                # Сохраняем информацию об обновлении
+                self.pending_update = update_info
+                
+                return message
+            else:
+                current_version = update_info.get('current_version', 'unknown')
+                latest_version = update_info.get('latest_version', 'unknown')
+                return (
+                    f"✅ У вас установлена последняя версия!\n\n"
+                    f"Текущая версия: <b>{current_version}</b>\n"
+                    f"Последняя версия: <b>{latest_version}</b>"
+                )
+                
+        except Exception as e:
+            error_msg = f"❌ Ошибка при проверке обновлений: {e}"
+            self.log(error_msg)
+            import traceback
+            traceback.print_exc()
+            return error_msg
+
     def perform_update(self, telegram_bot=None):
         """
         Выполняет обновление приложения

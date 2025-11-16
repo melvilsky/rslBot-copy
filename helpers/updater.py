@@ -47,22 +47,38 @@ def get_latest_version():
         url = f"{GITHUB_API_BASE}/releases/latest"
         req = urllib.request.Request(url)
         req.add_header('Accept', 'application/vnd.github.v3+json')
+        req.add_header('User-Agent', 'RaidSL-Bot-Updater/1.0')
+        
+        print(f"Fetching latest version from: {url}")
         
         with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status != 200:
+                print(f"HTTP Error {response.status}: {response.reason}")
+                return None
+                
             data = json.loads(response.read().decode())
             
             # Извлекаем версию из tag_name (формат: v1.2.3)
             tag_name = data.get('tag_name', '')
             version = tag_name.lstrip('v') if tag_name.startswith('v') else tag_name
             
+            if not version:
+                print("No version found in release data")
+                return None
+            
             # Находим ZIP архив в assets
             download_url = None
             for asset in data.get('assets', []):
-                if asset.get('name', '').endswith('.zip'):
+                asset_name = asset.get('name', '')
+                if asset_name.endswith('.zip'):
                     download_url = asset.get('browser_download_url')
+                    print(f"Found ZIP asset: {asset_name}")
                     break
             
-            return {
+            if not download_url:
+                print("WARNING: No ZIP archive found in release assets")
+            
+            result = {
                 'version': version,
                 'tag_name': tag_name,
                 'download_url': download_url,
@@ -70,14 +86,26 @@ def get_latest_version():
                 'published_at': data.get('published_at'),
                 'body': data.get('body', '')  # Описание релиза
             }
+            
+            print(f"Latest version found: {version} (tag: {tag_name})")
+            return result
+            
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print(f"No releases found (404): {e}")
+        else:
+            print(f"HTTP Error {e.code}: {e.reason}")
+        return None
     except urllib.error.URLError as e:
-        print(f"Error fetching latest version: {e}")
+        print(f"Network error fetching latest version: {e}")
         return None
     except json.JSONDecodeError as e:
         print(f"Error parsing JSON response: {e}")
         return None
     except Exception as e:
         print(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
