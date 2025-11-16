@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 # GitHub репозиторий (можно переопределить через переменную окружения)
 GITHUB_REPO = os.environ.get('GITHUB_REPOSITORY', 'melvilsky/rslBot-copy')
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_REPO}"
+# GitHub токен для приватных репозиториев (опционально)
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', None)
 
 
 def get_current_version():
@@ -49,10 +51,14 @@ def get_latest_version():
         req.add_header('Accept', 'application/vnd.github.v3+json')
         req.add_header('User-Agent', 'RaidSL-Bot-Updater/1.0')
         
-        print(f"Fetching latest version from: {url}")
+        # Добавляем токен если есть (для приватных репозиториев)
+        if GITHUB_TOKEN:
+            req.add_header('Authorization', f'token {GITHUB_TOKEN}')
+            print(f"Fetching latest version from: {url} (with token)")
+        else:
+            print(f"Fetching latest version from: {url} (public)")
         
-        try:
-            response = urllib.request.urlopen(req, timeout=10)
+        with urllib.request.urlopen(req, timeout=10) as response:
             if response.status != 200:
                 print(f"HTTP Error {response.status}: {response.reason}")
                 return None
@@ -89,14 +95,7 @@ def get_latest_version():
             }
             
             print(f"Latest version found: {version} (tag: {tag_name})")
-            response.close()
             return result
-        finally:
-            if 'response' in locals():
-                try:
-                    response.close()
-                except:
-                    pass
             
     except urllib.error.HTTPError as e:
         if e.code == 404:
