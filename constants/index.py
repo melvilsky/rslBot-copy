@@ -127,4 +127,13 @@ PROCESS_PLARIUM_PLAY_NAME = 'PlariumPlay.exe'
 WINDOW_TOP_BAR_HEIGHT = 25
 BORDER_WIDTH = 7
 CONFIG_PATH = "config.json"
+CONFIG_DEFAULT_PATH = "config.default.json"
 WINDOW_SIZE = [920, 540]
+
+
+def get_config_path():
+    """Возвращает путь к конфигу: сначала ищет config.json, если нет - config.default.json"""
+    import os
+    if os.path.exists(CONFIG_PATH):
+        return CONFIG_PATH
+    return CONFIG_DEFAULT_PATH

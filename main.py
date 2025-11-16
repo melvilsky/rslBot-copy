@@ -56,6 +56,19 @@ def main():
                     'token': app.config['telegram_token']
                 })
                 telegram_bot.start()
+                
+                # Устанавливаем ссылку на бота в app для доступа из методов
+                app.telegram_bot = telegram_bot
+                
+                # Проверяем обновления при запуске
+                app.check_for_updates(telegram_bot=telegram_bot)
+                
+                # Добавляем команду /update
+                telegram_bot.add({
+                    'command': 'update',
+                    'description': 'Обновить приложение до последней версии',
+                    'handler': lambda upd, ctx: upd.message.reply_text(app.perform_update(telegram_bot=telegram_bot))
+                })
 
                 commands_to_apply = copy.copy(app.COMMANDS_GAME_PATH_DEPENDANT) if game_path else []
                 commands_to_apply += app.COMMANDS_COMMON

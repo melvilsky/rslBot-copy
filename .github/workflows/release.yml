@@ -1,0 +1,134 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Триггер на теги вида v1.0.0, v1.2.3 и т.д.
+
+jobs:
+  release:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.7'
+    
+    - name: Install Chocolatey (if needed)
+      run: |
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+      shell: powershell
+    
+    - name: Install Tesseract OCR
+      run: |
+        choco install tesseract -y
+      shell: powershell
+      continue-on-error: false
+    
+    - name: Verify Tesseract installation
+      run: |
+        $tesseractPath = "C:\Program Files\Tesseract-OCR"
+        $tesseractExe = "$tesseractPath\tesseract.exe"
+        
+        if (Test-Path $tesseractExe) {
+          Write-Host "Tesseract found at: $tesseractPath"
+          & $tesseractExe --version
+        } else {
+          $found = Get-ChildItem "C:\Program Files*" -Filter "tesseract.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            $tesseractPath = Split-Path $found.FullName -Parent
+            & $found.FullName --version
+          } else {
+            Write-Host "ERROR: Tesseract not found!"
+            exit 1
+          }
+        }
+        
+        $env:Path = "$tesseractPath;$env:Path"
+      shell: powershell
+      continue-on-error: false
+    
+    - name: Set Tesseract environment variable
+      run: |
+        $tesseractPath = "C:\Program Files\Tesseract-OCR"
+        if (-not (Test-Path "$tesseractPath\tesseract.exe")) {
+          $found = Get-ChildItem "C:\Program Files*" -Filter "tesseract.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            $tesseractPath = Split-Path $found.FullName -Parent
+          }
+        }
+        Write-Host "TESSERACT_PATH=$tesseractPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      shell: powershell
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+      continue-on-error: false
+    
+    - name: Build executable
+      run: |
+        python build.py
+      env:
+        CI: 'true'
+        GITHUB_ACTIONS: 'true'
+      continue-on-error: false
+    
+    - name: Verify build output
+      run: |
+        if (-not (Test-Path "dist\main\RaidSL-Telegram-Bot.exe")) {
+          Write-Host "ERROR: Executable not found!"
+          exit 1
+        }
+        if (-not (Test-Path "dist\main\updater.exe")) {
+          Write-Host "ERROR: Updater not found!"
+          exit 1
+        }
+        Write-Host "Build verification successful!"
+      shell: powershell
+    
+    - name: Create release archive
+      run: |
+        cd dist
+        Compress-Archive -Path main\* -DestinationPath RaidSL-Telegram-Bot.zip -Force
+      shell: powershell
+    
+    - name: Extract version from tag
+      id: get_version
+      run: |
+        $tag = "${{ github.ref }}"
+        $version = $tag -replace "refs/tags/v", ""
+        Write-Host "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        Write-Host "Version: $version"
+      shell: powershell
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/RaidSL-Telegram-Bot.zip
+        name: Release ${{ steps.get_version.outputs.version }}
+        body: |
+          ## Версия ${{ steps.get_version.outputs.version }}
+          
+          Автоматический релиз создан из тега ${{ github.ref_name }}
+          
+          ### Установка
+          1. Скачайте архив `RaidSL-Telegram-Bot.zip`
+          2. Распакуйте в папку с приложением
+          3. Запустите `RaidSL-Telegram-Bot.exe`
+          
+          ### Обновление
+          Если у вас уже установлена предыдущая версия:
+          - Используйте команду `/update` в Telegram боте для автоматического обновления
+          - Или распакуйте архив поверх существующей установки (ваш `config.json` не будет затронут)
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

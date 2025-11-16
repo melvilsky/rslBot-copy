@@ -86,7 +86,7 @@ jobs:
         if (Test-Path "main.py") { Write-Host "[OK] main.py found" } else { Write-Host "[ERROR] main.py NOT found"; exit 1 }
         if (Test-Path "main.spec") { Write-Host "[OK] main.spec found" } else { Write-Host "[ERROR] main.spec NOT found"; exit 1 }
         if (Test-Path "build.py") { Write-Host "[OK] build.py found" } else { Write-Host "[ERROR] build.py NOT found"; exit 1 }
-        if (Test-Path "config.json") { Write-Host "[OK] config.json found" } else { Write-Host "[ERROR] config.json NOT found"; exit 1 }
+        if (Test-Path "config.default.json") { Write-Host "[OK] config.default.json found" } else { Write-Host "[WARNING] config.default.json NOT found (config.json will be used if exists)" }
         Write-Host "All required files found!"
       shell: powershell
     
