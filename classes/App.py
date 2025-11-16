@@ -499,9 +499,18 @@ class App(Foundation):
         """
         try:
             self.log('Manual update check requested...')
+            
+            # Получаем текущую версию
+            from helpers.updater import get_current_version
+            current = get_current_version()
+            self.log(f'Current version: {current}')
+            
+            # Проверяем обновления
             update_info = is_update_available()
+            self.log(f'Update check result: {update_info}')
             
             if not update_info:
+                self.log('Update info is None - error occurred')
                 return "❌ Ошибка при проверке обновлений. Проверьте подключение к интернету."
             
             if update_info.get('available'):

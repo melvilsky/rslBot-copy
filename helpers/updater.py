@@ -51,7 +51,8 @@ def get_latest_version():
         
         print(f"Fetching latest version from: {url}")
         
-        with urllib.request.urlopen(req, timeout=10) as response:
+        try:
+            response = urllib.request.urlopen(req, timeout=10)
             if response.status != 200:
                 print(f"HTTP Error {response.status}: {response.reason}")
                 return None
@@ -88,7 +89,14 @@ def get_latest_version():
             }
             
             print(f"Latest version found: {version} (tag: {tag_name})")
+            response.close()
             return result
+        finally:
+            if 'response' in locals():
+                try:
+                    response.close()
+                except:
+                    pass
             
     except urllib.error.HTTPError as e:
         if e.code == 404:
