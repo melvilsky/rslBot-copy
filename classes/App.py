@@ -3,6 +3,7 @@ from helpers.updater import is_update_available, should_check_for_updates, launc
 from classes.TaskManager import TaskManager
 from classes.Storage import Storage
 from classes.Foundation import *
+from telegram.error import BadRequest
 from locations.rewards.index import *
 # from locations.live_arena.index_old import *
 from locations.live_arena.index import *
