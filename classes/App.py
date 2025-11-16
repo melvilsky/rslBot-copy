@@ -554,6 +554,85 @@ class App(Foundation):
             traceback.print_exc()
             return error_msg
 
+    def clear_chat(self, telegram_bot=None, limit=100):
+        """
+        Очищает чат от сообщений бота
+        Удаляет последние N сообщений бота из чата
+        """
+        try:
+            if not telegram_bot or not hasattr(telegram_bot, 'updater'):
+                return "❌ Бот не доступен"
+            
+            chat_id = None
+            deleted_count = 0
+            
+            # Получаем chat_id из последних обновлений
+            try:
+                updates = telegram_bot.updater.bot.get_updates(limit=10)
+                for update in updates:
+                    if update.message and update.message.chat_id:
+                        chat_id = update.message.chat_id
+                        break
+            except Exception as e:
+                self.log(f"Error getting chat_id: {e}")
+                return "❌ Не удалось определить чат"
+            
+            if not chat_id:
+                return "❌ Чат не найден. Отправьте боту любое сообщение и попробуйте снова."
+            
+            self.log(f"Clearing chat {chat_id}, limit: {limit}")
+            
+            # Получаем обновления для поиска сообщений бота
+            try:
+                updates = telegram_bot.updater.bot.get_updates(limit=limit, offset=-limit)
+                message_ids = []
+                
+                for update in updates:
+                    if update.message:
+                        # Проверяем, что сообщение от бота
+                        if update.message.from_user and update.message.from_user.is_bot:
+                            if update.message.chat_id == chat_id:
+                                message_ids.append(update.message.message_id)
+                
+                # Удаляем сообщения в обратном порядке (от старых к новым)
+                message_ids.reverse()
+                
+                for msg_id in message_ids:
+                    try:
+                        telegram_bot.updater.bot.delete_message(
+                            chat_id=chat_id,
+                            message_id=msg_id
+                        )
+                        deleted_count += 1
+                        sleep(0.05)  # Небольшая задержка чтобы не превысить rate limit
+                    except BadRequest as e:
+                        # Сообщение уже удалено или недоступно
+                        if "message to delete not found" not in str(e).lower():
+                            self.log(f"Error deleting message {msg_id}: {e}")
+                    except Exception as e:
+                        self.log(f"Error deleting message {msg_id}: {e}")
+                
+                if deleted_count > 0:
+                    result = f"✅ Удалено сообщений: {deleted_count}"
+                    self.log(result)
+                    return result
+                else:
+                    return "ℹ️ Сообщения для удаления не найдены"
+                    
+            except Exception as e:
+                error_msg = f"❌ Ошибка при очистке чата: {e}"
+                self.log(error_msg)
+                import traceback
+                traceback.print_exc()
+                return error_msg
+                
+        except Exception as e:
+            error_msg = f"❌ Ошибка: {e}"
+            self.log(error_msg)
+            import traceback
+            traceback.print_exc()
+            return error_msg
+
     def perform_update(self, telegram_bot=None):
         """
         Выполняет обновление приложения
