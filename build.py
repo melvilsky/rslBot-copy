@@ -2,6 +2,8 @@ import os
 import shutil
 import subprocess
 import sys
+import json
+from datetime import datetime
 
 # win32com.client нужен только для создания ярлыков (не используется в CI/CD)
 try:
@@ -83,6 +85,44 @@ def copy_config():
     shutil.copy('config.json', 'dist')
 
 
+def generate_version_json():
+    """Генерирует version.json для сборки"""
+    version_file = 'version.json'
+    main_dir = 'dist/main'
+    
+    # Читаем текущую версию или используем дефолтную
+    if os.path.exists(version_file):
+        with open(version_file, 'r', encoding='utf-8') as f:
+            version_data = json.load(f)
+        current_version = version_data.get('version', '1.0.0')
+    else:
+        current_version = '1.0.0'
+    
+    # Генерируем новую дату сборки
+    build_date = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    
+    # Формируем download_url
+    # Если есть переменная окружения GITHUB_REPOSITORY, используем её
+    # Иначе используем дефолтный путь
+    github_repo = os.environ.get('GITHUB_REPOSITORY', 'melvilsky/rslBot-copy')
+    download_url = f"https://github.com/{github_repo}/releases/download/v{current_version}/RaidSL-Telegram-Bot.zip"
+    
+    version_data = {
+        "version": current_version,
+        "build_date": build_date,
+        "download_url": download_url
+    }
+    
+    # Сохраняем в dist/main
+    os.makedirs(main_dir, exist_ok=True)
+    version_path = os.path.join(main_dir, 'version.json')
+    with open(version_path, 'w', encoding='utf-8') as f:
+        json.dump(version_data, f, indent=2, ensure_ascii=False)
+    
+    print(f"Generated version.json: {current_version} ({build_date})")
+    return version_data
+
+
 def build():
     # subprocess.call(r"pyinstaller --onefile --collect-submodules vendor main.py")
     # subprocess.call(fr"pyinstaller --distpath {bot_path} main.spec")
@@ -111,6 +151,42 @@ def build():
     return result
 
 
+def build_updater():
+    """Собирает updater.exe"""
+    print("Building updater.exe...")
+    print(f"Current directory: {os.getcwd()}")
+    
+    if not os.path.exists('updater.spec'):
+        raise Exception("updater.spec file not found!")
+    
+    # Запускаем PyInstaller для updater
+    result = subprocess.call(
+        r"pyinstaller updater.spec",
+        shell=True,
+        stdout=sys.stdout,
+        stderr=subprocess.STDOUT
+    )
+    
+    if result != 0:
+        print(f"\nERROR: PyInstaller failed for updater with exit code {result}")
+        raise Exception(f"PyInstaller failed for updater with exit code {result}")
+    
+    # Копируем updater.exe в dist/main
+    updater_exe_src = os.path.join('dist', 'updater', 'updater.exe')
+    updater_exe_dst = os.path.join('dist', 'main', 'updater.exe')
+    
+    if os.path.exists(updater_exe_src):
+        if os.path.exists(updater_exe_dst):
+            os.remove(updater_exe_dst)
+        shutil.copy(updater_exe_src, updater_exe_dst)
+        print(f"Updater.exe copied to {updater_exe_dst}")
+    else:
+        raise Exception(f"Updater.exe not found at {updater_exe_src}")
+    
+    print("Updater build completed successfully!")
+    return result
+
+
 def copy_files():
     main_dir = 'dist/main'
     if not os.path.exists(main_dir):
@@ -132,7 +208,12 @@ def copy_files():
         shutil.rmtree(translations_dest)
     shutil.copytree('translations', translations_dest)
     
-    shutil.copy('config.json', main_dir)
+    # Копируем config.default.json (пользовательский config.json создается при первом запуске)
+    if os.path.exists('config.default.json'):
+        shutil.copy('config.default.json', main_dir)
+    elif os.path.exists('config.json'):
+        # Для обратной совместимости, если еще не переименован
+        shutil.copy('config.json', main_dir)
 
 
 def create_symlink():
@@ -179,7 +260,7 @@ try:
         raise Exception("main.spec file not found!")
     print("main.spec found, proceeding with build...")
     
-    # Сборка
+    # Сборка основного приложения
     print("\n" + "=" * 60)
     print("STARTING PYINSTALLER BUILD")
     print("=" * 60)
@@ -187,6 +268,21 @@ try:
     print("=" * 60)
     print("BUILD COMPLETED SUCCESSFULLY!")
     print("=" * 60)
+    
+    # Сборка updater
+    print("\n" + "=" * 60)
+    print("BUILDING UPDATER")
+    print("=" * 60)
+    build_updater()
+    print("=" * 60)
+    print("UPDATER BUILD COMPLETED!")
+    print("=" * 60)
+    
+    # Генерация version.json
+    print("\n" + "=" * 60)
+    print("GENERATING VERSION.JSON")
+    print("=" * 60)
+    generate_version_json()
     
     # Копирование файлов
     print("\n" + "=" * 60)

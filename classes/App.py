@@ -1,4 +1,5 @@
 from helpers.common import *
+from helpers.updater import is_update_available, should_check_for_updates, launch_updater
 from classes.TaskManager import TaskManager
 from classes.Storage import Storage
 from classes.Foundation import *
@@ -209,6 +210,7 @@ class App(Foundation):
         self.lang = None
         self.translations = None
         self.scheduler = None
+        self.telegram_bot = None  # Будет установлен из main.py
 
         # @TODO Temp commented
         # self.storage = Storage(name='storage', folder='temp')
@@ -413,6 +415,149 @@ class App(Foundation):
         # Обновлено для работы в 2025 году и далее
         return date_now.year >= 2024
 
+    def check_for_updates(self, telegram_bot=None):
+        """
+        Проверяет наличие обновлений и уведомляет пользователя
+        Вызывается при запуске приложения (раз в день)
+        """
+        try:
+            # Проверяем, нужно ли проверять обновления (раз в день)
+            if not should_check_for_updates():
+                return
+            
+            self.log('Checking for updates...')
+            update_info = is_update_available()
+            
+            if update_info and update_info.get('available'):
+                current_version = update_info.get('current_version', 'unknown')
+                latest_version = update_info.get('latest_version', 'unknown')
+                download_url = update_info.get('download_url')
+                release_url = update_info.get('release_url', '')
+                release_notes = update_info.get('release_notes', '')
+                
+                message = (
+                    f"🔄 Доступно обновление!\n\n"
+                    f"Текущая версия: {current_version}\n"
+                    f"Новая версия: {latest_version}\n"
+                )
+                
+                if release_notes:
+                    # Обрезаем release notes до 500 символов
+                    notes = release_notes[:500] + "..." if len(release_notes) > 500 else release_notes
+                    message += f"\nЧто нового:\n{notes}\n"
+                
+                if release_url:
+                    message += f"\nПодробнее: {release_url}"
+                
+                message += "\n\nИспользуйте команду /update для обновления"
+                
+                # Уведомляем через Telegram если бот доступен
+                if telegram_bot and hasattr(telegram_bot, 'updater'):
+                    try:
+                        # Отправляем сообщение всем чатам бота
+                        # Получаем список обновлений для получения chat_id
+                        updates = telegram_bot.updater.bot.get_updates()
+                        chat_ids = set()
+                        for update in updates:
+                            if update.message and update.message.chat_id:
+                                chat_ids.add(update.message.chat_id)
+                        
+                        # Если нет обновлений, пробуем отправить в известные чаты
+                        if not chat_ids:
+                            # Можно добавить сохранение chat_id при первом использовании
+                            pass
+                        
+                        for chat_id in chat_ids:
+                            try:
+                                telegram_bot.updater.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=message,
+                                    parse_mode='HTML'
+                                )
+                            except Exception as e:
+                                self.log(f"Error sending update notification to {chat_id}: {e}")
+                    except Exception as e:
+                        self.log(f"Error sending update notification: {e}")
+                
+                # Также логируем в консоль
+                self.log(message)
+                
+                # Сохраняем информацию об обновлении для команды /update
+                self.pending_update = update_info
+            else:
+                self.log('No updates available')
+                
+        except Exception as e:
+            self.log(f"Error checking for updates: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def perform_update(self, telegram_bot=None):
+        """
+        Выполняет обновление приложения
+        Вызывается по команде /update из Telegram
+        """
+        try:
+            if not hasattr(self, 'pending_update') or not self.pending_update:
+                # Проверяем обновления заново
+                update_info = is_update_available()
+                if not update_info or not update_info.get('available'):
+                    return "Обновления не найдены"
+                self.pending_update = update_info
+            
+            download_url = self.pending_update.get('download_url')
+            if not download_url:
+                return "URL для скачивания не найден"
+            
+            # Определяем путь к приложению
+            if hasattr(sys, 'frozen') and sys.frozen:
+                app_path = os.path.dirname(sys.executable)
+            else:
+                app_path = os.getcwd()
+            
+            # Запускаем updater
+            self.log(f"Starting update process...")
+            self.log(f"Download URL: {download_url}")
+            self.log(f"App path: {app_path}")
+            
+            if launch_updater(download_url, app_path):
+                message = "Обновление запущено. Приложение будет закрыто и перезапущено после обновления."
+                
+                # Уведомляем через Telegram
+                if telegram_bot and hasattr(telegram_bot, 'updater'):
+                    try:
+                        updates = telegram_bot.updater.bot.get_updates()
+                        chat_ids = set()
+                        for update in updates:
+                            if update.message and update.message.chat_id:
+                                chat_ids.add(update.message.chat_id)
+                        
+                        for chat_id in chat_ids:
+                            try:
+                                telegram_bot.updater.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=message
+                                )
+                            except Exception as e:
+                                self.log(f"Error sending update message to {chat_id}: {e}")
+                    except Exception as e:
+                        self.log(f"Error sending update message: {e}")
+                
+                # Даем время на отправку сообщения, затем закрываем приложение
+                sleep(2)
+                sys.exit(0)
+                
+                return message
+            else:
+                return "Ошибка при запуске обновления"
+                
+        except Exception as e:
+            error_msg = f"Ошибка при обновлении: {e}"
+            self.log(error_msg)
+            import traceback
+            traceback.print_exc()
+            return error_msg
+
     def load_config(self, config):
         self.config = self._prepare_config(config)
         log('Load App Config')
@@ -425,13 +570,27 @@ class App(Foundation):
 
     def read_config(self):
         try:
-            with open(CONFIG_PATH, encoding='utf-8') as config_file:
+            # Получаем путь к конфигу (config.json или config.default.json)
+            config_path = get_config_path()
+            
+            # Если config.json не существует, но есть config.default.json, копируем его
+            if not os.path.exists(CONFIG_PATH) and os.path.exists(CONFIG_DEFAULT_PATH):
+                import shutil
+                shutil.copy(CONFIG_DEFAULT_PATH, CONFIG_PATH)
+                self.log(f'Created {CONFIG_PATH} from {CONFIG_DEFAULT_PATH}')
+                config_path = CONFIG_PATH
+            
+            with open(config_path, encoding='utf-8') as config_file:
                 config = json.load(config_file)
                 self.config = self._prepare_config(config)
                 self.log('Config is processed')
 
         except SystemError:
-            log('An error occurred while reading ' + CONFIG_PATH + ' file')
+            log('An error occurred while reading config file')
+        except FileNotFoundError:
+            log(f'Config file not found: {get_config_path()}')
+        except Exception as e:
+            log(f'Error reading config: {e}')
 
     def report(self, *args):
         print('App -> Report')
