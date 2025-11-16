@@ -81,7 +81,7 @@ def main():
                 telegram_bot.add({
                     'command': 'clearchat',
                     'description': 'Очистить чат от сообщений бота',
-                    'handler': lambda upd, ctx: upd.message.reply_text(app.clear_chat(telegram_bot=telegram_bot))
+                    'handler': lambda upd, ctx: upd.message.reply_text(app.clear_chat(update=upd, context=ctx, telegram_bot=telegram_bot))
                 })
 
                 commands_to_apply = copy.copy(app.COMMANDS_GAME_PATH_DEPENDANT) if game_path else []
