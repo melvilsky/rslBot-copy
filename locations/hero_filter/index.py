@@ -33,8 +33,8 @@ class HeroFilter:
     FILTER_TYPE_SMALL = 'small'
 
     PICK_SLOTS = {
-        '1': [50, 400],
-        '2': [50, 490],
+        '1': [100, 350],
+        '2': [125, 490],
     }
 
     def __init__(self, props=None):
