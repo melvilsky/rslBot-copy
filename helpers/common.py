@@ -221,8 +221,8 @@ def capture_by_source(src, region, confidence=.8, grayscale=False, return_boxes=
 
 def click(x, y, smart=False, timeout=0.5, interval=2, random_click=None):
     # Отладка: логируем координаты и сохраняем скриншот
-    from constants.index import DEBUG_CLICKS
-    if DEBUG_CLICKS:
+    from constants.index import DEBUG_MODE
+    if DEBUG_MODE:
         log(f"DEBUG click: coordinates [{x}, {y}]")
         debug_click_coordinates(x, y, label="click")
     
@@ -232,7 +232,7 @@ def click(x, y, smart=False, timeout=0.5, interval=2, random_click=None):
         max_random = random_click if type(random_click) is int else 5
         x += random.randint(1, max_random)
         y += random.randint(1, max_random)
-        if DEBUG_CLICKS:
+        if DEBUG_MODE:
             log(f"DEBUG click: after random offset [{x}, {y}]")
             debug_click_coordinates(x, y, label="click-random")
 

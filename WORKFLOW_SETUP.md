@@ -211,24 +211,19 @@ python -c "import PyInstaller; print('PyInstaller module found')"
 10. **Set Tesseract environment variable** - установка переменной окружения
 11. **Build executable** - сборка приложения через build.py
 12. **Verify build output** - проверка результата сборки
-13. **Upload build artifacts** - загрузка папки с собранным приложением
-14. **Create release archive** - создание ZIP архива
-15. **Upload release archive** - загрузка ZIP архива
+13. **Create release archive** - создание ZIP архива
+14. **Upload release archive** - загрузка ZIP архива в артефакты
 
 ---
 
 ## Созданные артефакты
 
-После успешной сборки создаются два артефакта:
+После успешной сборки создается один артефакт:
 
-1. **`windows-build` (134 MB)**
-   - Распакованная папка `dist/main/` со всеми файлами
-   - Включает exe, DLL, зависимости, images, translations, config.json
-
-2. **`release-zip` (129 MB)**
+1. **`RaidSL-Telegram-Bot` (~129 MB)**
    - ZIP архив `RaidSL-Telegram-Bot.zip`
-   - Те же файлы, упакованные в один архив
-   - Рекомендуется для скачивания и распространения
+   - Включает exe, DLL, зависимости, images, translations, config.json
+   - Готов к скачиванию и использованию
 
 ---
 

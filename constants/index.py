@@ -3,9 +3,10 @@
 IS_DEV = False
 # IS_DEV = True
 
-# Debug click coordinates - сохраняет скриншоты с отмеченными точками кликов
-DEBUG_CLICKS = True
-# DEBUG_CLICKS = False
+# Debug mode - включает отладку координат кликов и проверки цвета пикселей
+# Включает: сохранение скриншотов с отмеченными точками кликов, логирование координат, отладку цвета пикселей
+# DEBUG_MODE = True
+DEBUG_MODE = False
 
 # CLASSIC_ITEM_HEIGHT = 92
 # @TODO Test

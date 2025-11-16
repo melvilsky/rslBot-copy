@@ -127,13 +127,6 @@ jobs:
       shell: powershell
       continue-on-error: false
     
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-build
-        path: dist/main/**
-        retention-days: 30
-    
     - name: Create release archive
       run: |
         cd dist
@@ -143,7 +136,7 @@ jobs:
     - name: Upload release archive
       uses: actions/upload-artifact@v4
       with:
-        name: release-zip
+        name: RaidSL-Telegram-Bot
         path: dist/RaidSL-Telegram-Bot.zip
         retention-days: 30
 

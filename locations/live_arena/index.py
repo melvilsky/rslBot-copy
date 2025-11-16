@@ -319,47 +319,51 @@ class ArenaLive(Location):
 
     def _click_on_find_opponent(self):
         # Отладочный вывод: проверяем цвет пикселя перед ожиданием
+        from constants.index import DEBUG_MODE
+        
         x = find_opponent[0]
         y = find_opponent[1]
         expected_rgb = find_opponent[2]
         
-        try:
-            actual_pixel = pyautogui.pixel(x, y)
-            actual_rgb = [actual_pixel[0], actual_pixel[1], actual_pixel[2]]
-            diff = [abs(actual_rgb[i] - expected_rgb[i]) for i in range(3)]
-            max_diff = max(diff)
-            
-            from helpers.common import rgb_check
-            matches = rgb_check(actual_rgb, expected_rgb, mistake=20)
-            
-            self.log(f"DEBUG find_opponent pixel check:")
-            self.log(f"  Coordinates: [{x}, {y}]")
-            self.log(f"  Expected RGB: {expected_rgb}")
-            self.log(f"  Actual RGB:   {actual_rgb}")
-            self.log(f"  Difference:   {diff} (max: {max_diff})")
-            self.log(f"  Threshold:    20")
-            self.log(f"  Matches:      {matches}")
-        except Exception as e:
-            self.log(f"ERROR checking pixel: {e}")
-        
-        if not await_click([find_opponent], msg="Click on find opponent", mistake=20, wait_limit=65)[0]:
-            # Если не нашли, еще раз проверим цвет для отладки
-            self.log("Failed to find opponent button. Checking pixel color again...")
+        if DEBUG_MODE:
             try:
                 actual_pixel = pyautogui.pixel(x, y)
                 actual_rgb = [actual_pixel[0], actual_pixel[1], actual_pixel[2]]
                 diff = [abs(actual_rgb[i] - expected_rgb[i]) for i in range(3)]
                 max_diff = max(diff)
+                
                 from helpers.common import rgb_check
                 matches = rgb_check(actual_rgb, expected_rgb, mistake=20)
                 
-                self.log(f"DEBUG after failure:")
-                self.log(f"  Actual RGB:   {actual_rgb}")
+                self.log(f"DEBUG find_opponent pixel check:")
+                self.log(f"  Coordinates: [{x}, {y}]")
                 self.log(f"  Expected RGB: {expected_rgb}")
+                self.log(f"  Actual RGB:   {actual_rgb}")
                 self.log(f"  Difference:   {diff} (max: {max_diff})")
+                self.log(f"  Threshold:    20")
                 self.log(f"  Matches:      {matches}")
             except Exception as e:
-                self.log(f"ERROR checking pixel after failure: {e}")
+                self.log(f"ERROR checking pixel: {e}")
+        
+        if not await_click([find_opponent], msg="Click on find opponent", mistake=20, wait_limit=65)[0]:
+            # Если не нашли, еще раз проверим цвет для отладки
+            if DEBUG_MODE:
+                self.log("Failed to find opponent button. Checking pixel color again...")
+                try:
+                    actual_pixel = pyautogui.pixel(x, y)
+                    actual_rgb = [actual_pixel[0], actual_pixel[1], actual_pixel[2]]
+                    diff = [abs(actual_rgb[i] - expected_rgb[i]) for i in range(3)]
+                    max_diff = max(diff)
+                    from helpers.common import rgb_check
+                    matches = rgb_check(actual_rgb, expected_rgb, mistake=20)
+                    
+                    self.log(f"DEBUG after failure:")
+                    self.log(f"  Actual RGB:   {actual_rgb}")
+                    self.log(f"  Expected RGB: {expected_rgb}")
+                    self.log(f"  Difference:   {diff} (max: {max_diff})")
+                    self.log(f"  Matches:      {matches}")
+                except Exception as e:
+                    self.log(f"ERROR checking pixel after failure: {e}")
             
             self.terminate()
 
