@@ -220,12 +220,21 @@ def capture_by_source(src, region, confidence=.8, grayscale=False, return_boxes=
 
 
 def click(x, y, smart=False, timeout=0.5, interval=2, random_click=None):
+    # Отладка: логируем координаты и сохраняем скриншот
+    from constants.index import DEBUG_CLICKS
+    if DEBUG_CLICKS:
+        log(f"DEBUG click: coordinates [{x}, {y}]")
+        debug_click_coordinates(x, y, label="click")
+    
     rgb = pyautogui.pixel(x, y) if smart else None
 
     if random_click is not None:
         max_random = random_click if type(random_click) is int else 5
         x += random.randint(1, max_random)
         y += random.randint(1, max_random)
+        if DEBUG_CLICKS:
+            log(f"DEBUG click: after random offset [{x}, {y}]")
+            debug_click_coordinates(x, y, label="click-random")
 
     pyautogui.click(x, y)
 
@@ -284,6 +293,94 @@ def debug_save_screenshot(
     file_name = format_string_for_log(f"{time}-{str(suffix_name).lower()}" if suffix_name else time)
     screenshot = pyautogui.screenshot(region=region)
     screenshot.save(os.path.join(output_debug, f"{file_name}.{ext}"), quality=quality)
+
+
+def debug_click_coordinates(x, y, label="click", region=None):
+    """
+    Сохраняет скриншот с отмеченной точкой клика для отладки.
+    
+    Args:
+        x, y: координаты клика
+        label: метка для имени файла
+        region: область скриншота [x, y, width, height], если None - весь экран
+    """
+    try:
+        # Определяем область для скриншота
+        if region is None:
+            # Делаем скриншот области вокруг точки клика (200x200 пикселей)
+            margin = 100
+            screen_width, screen_height = pyautogui.size()
+            
+            # Вычисляем границы области
+            left = max(0, x - margin)
+            top = max(0, y - margin)
+            right = min(screen_width, x + margin)
+            bottom = min(screen_height, y + margin)
+            
+            # Формат region для pyautogui: [left, top, width, height]
+            region = [
+                left,
+                top,
+                right - left,  # ширина
+                bottom - top   # высота
+            ]
+        
+        # Делаем скриншот
+        screenshot = pyautogui.screenshot(region=region)
+        img_np = np.array(screenshot)
+        img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        
+        # Вычисляем координаты относительно области скриншота
+        rel_x = x - region[0]
+        rel_y = y - region[1]
+        
+        # Рисуем красный круг в точке клика
+        cv2.circle(img_np, (rel_x, rel_y), 10, (0, 0, 255), 2)  # Красный круг радиусом 10
+        cv2.circle(img_np, (rel_x, rel_y), 2, (0, 0, 255), -1)  # Красная точка в центре
+        
+        # Рисуем крестик для лучшей видимости
+        line_length = 15
+        cv2.line(img_np, (rel_x - line_length, rel_y), (rel_x + line_length, rel_y), (0, 0, 255), 2)
+        cv2.line(img_np, (rel_x, rel_y - line_length), (rel_x, rel_y + line_length), (0, 0, 255), 2)
+        
+        # Добавляем текст с координатами
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        text = f"[{x}, {y}]"
+        font_scale = 0.6
+        thickness = 2
+        text_color = (0, 255, 255)  # Желтый цвет
+        bg_color = (0, 0, 0)  # Черный фон
+        
+        # Получаем размер текста
+        (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+        
+        # Рисуем фон для текста
+        cv2.rectangle(img_np, 
+                      (rel_x - text_width // 2 - 5, rel_y - text_height - 25),
+                      (rel_x + text_width // 2 + 5, rel_y - text_height - 5),
+                      bg_color, -1)
+        
+        # Рисуем текст
+        cv2.putText(img_np, text,
+                   (rel_x - text_width // 2, rel_y - text_height - 10),
+                   font, font_scale, text_color, thickness, cv2.LINE_AA)
+        
+        # Сохраняем скриншот
+        output_debug = 'debug/clicks'
+        folder_ensure(output_debug)
+        time_str = get_time_for_log(s='-')
+        file_name = f"{time_str}-{label}-[{x}-{y}].jpg"
+        file_path = os.path.join(output_debug, file_name)
+        
+        # Конвертируем обратно в RGB для сохранения
+        img_rgb = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
+        img_pil = Image.fromarray(img_rgb)
+        img_pil.save(file_path, quality=95)
+        
+        log(f"DEBUG: Click screenshot saved: {file_path} | Coordinates: [{x}, {y}]")
+        
+    except Exception as e:
+        log(f"ERROR saving click debug screenshot: {e}")
 
 
 def pixel_check_new(pixel, mistake=10):

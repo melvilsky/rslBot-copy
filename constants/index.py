@@ -3,6 +3,10 @@
 IS_DEV = False
 # IS_DEV = True
 
+# Debug click coordinates - сохраняет скриншоты с отмеченными точками кликов
+DEBUG_CLICKS = True
+# DEBUG_CLICKS = False
+
 # CLASSIC_ITEM_HEIGHT = 92
 # @TODO Test
 CLASSIC_ITEM_HEIGHT = 96
