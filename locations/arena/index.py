@@ -247,9 +247,6 @@ class ArenaFactory(Location):
                 self.log(self.name + ' | Attack')
                 click_on_battle()
 
-                if self._refill():
-                    click_on_battle()
-
                 if self.terminated:
                     self.log('Terminated')
                     break
@@ -258,6 +255,15 @@ class ArenaFactory(Location):
                 enable_start_on_auto()
 
                 click_on_start()
+
+                # Проверка докупки после нажатия confirm (Start)
+                if self._refill():
+                    # Если докупили, нужно снова нажать confirm
+                    click_on_start()
+
+                if self.terminated:
+                    self.log('Terminated')
+                    break
 
                 self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
                 res = not pixel_check_new(defeat, 20)
