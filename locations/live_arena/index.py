@@ -314,7 +314,42 @@ class ArenaLive(Location):
 
     def _claim_free_refill_coins(self):
         # Проверка с погрешностью mistake=20 для устойчивости к небольшим изменениям цвета
-        if pixel_check_new(claim_refill, mistake=20):
+        x_check = claim_refill[0]
+        y_check = claim_refill[1]
+        expected_rgb = claim_refill[2]
+        mistake = 20
+        
+        # Получаем фактический цвет пикселя
+        actual_pixel = pyautogui.pixel(x_check, y_check)
+        actual_rgb = [actual_pixel[0], actual_pixel[1], actual_pixel[2]]
+        
+        # Проверяем совпадение
+        matches = rgb_check(actual_rgb, expected_rgb, mistake=mistake)
+        
+        # Отладка: сохраняем скриншот области вокруг точки проверки
+        margin = 50
+        region = [
+            max(0, x_check - margin),
+            max(0, y_check - margin),
+            margin * 2,
+            margin * 2
+        ]
+        debug_save_screenshot(
+            region=region,
+            suffix_name=f'claim_refill_check_x{x_check}_y{y_check}',
+            quality=100,
+            ext='png'
+        )
+        
+        # Логируем информацию о проверке
+        diff = [abs(actual_rgb[i] - expected_rgb[i]) for i in range(3)]
+        max_diff = max(diff)
+        self.log(f"DEBUG claim_refill: координаты ({x_check}, {y_check})")
+        self.log(f"DEBUG claim_refill: ожидаемый RGB {expected_rgb}, фактический RGB {actual_rgb}")
+        self.log(f"DEBUG claim_refill: максимальная разница {max_diff}, mistake={mistake}")
+        self.log(f"DEBUG claim_refill: совпадение {'✅ ДА' if matches else '❌ НЕТ'}")
+        
+        if matches:
             x = claim_refill[0] - 5
             y = claim_refill[1] + 5
             click(x, y)
