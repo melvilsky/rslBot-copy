@@ -59,7 +59,9 @@ find_opponent = [500, 460, [255, 190, 0]]
 battle_start_turn = [341, 74, [86, 191, 255]]
 refill_free = [454, 373, [187, 130, 5]]
 refill_paid = [444, 393, [195, 40, 66]]
-claim_refill = [875, 173, [218, 0, 0]]
+# Координаты и цвет награды для докупки (обновлено на основе тестирования)
+# Реальный цвет в точке (1580, 290): RGB=[187, 38, 25]
+claim_refill = [1580, 290, [187, 38, 25]]
 claim_chest = [534, 448, [233, 0, 0]]
 
 # return_start_panel = [444, 490]
@@ -311,7 +313,8 @@ class ArenaLive(Location):
             claim_rewards(x, y)
 
     def _claim_free_refill_coins(self):
-        if pixel_check_new(claim_refill):
+        # Проверка с погрешностью mistake=20 для устойчивости к небольшим изменениям цвета
+        if pixel_check_new(claim_refill, mistake=20):
             x = claim_refill[0] - 5
             y = claim_refill[1] + 5
             click(x, y)
