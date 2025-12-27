@@ -1,6 +1,8 @@
 import pyautogui
 import pause
 import copy
+import os
+from PIL import Image, ImageDraw
 
 from helpers.time_mgr import *
 from locations.hero_filter.index import *
@@ -313,6 +315,8 @@ class ArenaLive(Location):
             claim_rewards(x, y)
 
     def _claim_free_refill_coins(self):
+        from helpers.common import rgb_check, get_time_for_log, format_string_for_log, folder_ensure
+        
         # Проверка с погрешностью mistake=20 для устойчивости к небольшим изменениям цвета
         x_check = claim_refill[0]
         y_check = claim_refill[1]
@@ -326,20 +330,49 @@ class ArenaLive(Location):
         # Проверяем совпадение
         matches = rgb_check(actual_rgb, expected_rgb, mistake=mistake)
         
-        # Отладка: сохраняем скриншот области вокруг точки проверки
-        margin = 50
+        # Отладка: сохраняем скриншот области вокруг точки проверки с маркером
+        margin = 100
         region = [
             max(0, x_check - margin),
             max(0, y_check - margin),
             margin * 2,
             margin * 2
         ]
-        debug_save_screenshot(
-            region=region,
-            suffix_name=f'claim_refill_check_x{x_check}_y{y_check}',
-            quality=100,
-            ext='png'
+        
+        # Сохраняем скриншот
+        output_debug = 'debug'
+        time_str = get_time_for_log(s='-')
+        folder_ensure(output_debug)
+        file_name = format_string_for_log(f"{time_str}-claim_refill_check_x{x_check}_y{y_check}")
+        screenshot = pyautogui.screenshot(region=region)
+        file_path = os.path.join(output_debug, f"{file_name}.png")
+        screenshot.save(file_path, quality=100)
+        
+        # Вычисляем относительные координаты точки проверки в скриншоте
+        rel_x = x_check - region[0]
+        rel_y = y_check - region[1]
+        
+        # Загружаем изображение и рисуем маркер
+        img = Image.open(file_path)
+        draw = ImageDraw.Draw(img)
+        
+        # Цвет маркера: зеленый если совпадает, красный если нет
+        marker_color = (0, 255, 0) if matches else (255, 0, 0)
+        marker_size = 10
+        
+        # Рисуем круг
+        draw.ellipse(
+            [rel_x - marker_size, rel_y - marker_size, rel_x + marker_size, rel_y + marker_size],
+            outline=marker_color,
+            width=3
         )
+        # Рисуем крестик
+        cross_size = marker_size * 2
+        draw.line([rel_x - cross_size, rel_y, rel_x + cross_size, rel_y], fill=marker_color, width=3)
+        draw.line([rel_x, rel_y - cross_size, rel_x, rel_y + cross_size], fill=marker_color, width=3)
+        
+        # Сохраняем изображение с маркером
+        img.save(file_path, quality=100)
         
         # Логируем информацию о проверке
         diff = [abs(actual_rgb[i] - expected_rgb[i]) for i in range(3)]
@@ -348,7 +381,8 @@ class ArenaLive(Location):
         self.log(f"DEBUG claim_refill: ожидаемый RGB {expected_rgb}, фактический RGB {actual_rgb}")
         self.log(f"DEBUG claim_refill: максимальная разница {max_diff}, mistake={mistake}")
         self.log(f"DEBUG claim_refill: совпадение {'✅ ДА' if matches else '❌ НЕТ'}")
-        
+        self.log(f"DEBUG claim_refill: скриншот сохранен: {file_path}")
+
         if matches:
             x = claim_refill[0] - 5
             y = claim_refill[1] + 5
