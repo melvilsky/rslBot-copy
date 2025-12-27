@@ -2,11 +2,77 @@ import pyautogui
 import pause
 import copy
 import os
+import json
 from PIL import Image, ImageDraw
 
 from helpers.time_mgr import *
 from locations.hero_filter.index import *
 from classes.Location import Location
+
+# ============================================================================
+# КООРДИНАТЫ ХРАНЯТСЯ В: coordinates/live_arena.json
+# Для изменения координат отредактируйте этот файл и перезапустите приложение
+# ============================================================================
+
+def load_live_arena_coordinates():
+    """
+    Загружает координаты из файла coordinates/live_arena.json
+    Возвращает словарь с координатами или None в случае ошибки
+    """
+    try:
+        # Путь к файлу координат (работает и в разработке, и в собранном приложении)
+        coords_path = os.path.join('coordinates', 'live_arena.json')
+        
+        if os.path.exists(coords_path):
+            with open(coords_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+            # Если файл не найден, возвращаем None (будем использовать дефолтные значения)
+            return None
+    except Exception as e:
+        print(f"Ошибка загрузки координат из {coords_path}: {e}")
+        return None
+
+# Загружаем координаты при импорте модуля
+_coordinates_data = load_live_arena_coordinates()
+
+# Функция для получения координат с fallback на дефолтные значения
+def get_coordinate(key, default_value):
+    """
+    Получает координаты из загруженного JSON или возвращает дефолтное значение
+    
+    Args:
+        key: ключ в JSON (например, 'claim_refill')
+        default_value: дефолтное значение в формате [x, y, [r, g, b]]
+    
+    Returns:
+        [x, y, [r, g, b]] - координаты и RGB
+    """
+    if _coordinates_data and key in _coordinates_data:
+        coord = _coordinates_data[key]
+        return [coord['x'], coord['y'], coord['rgb']]
+    return default_value
+
+def get_coordinate_mistake(key, default_mistake=20):
+    """
+    Получает значение mistake (погрешность) для координат из JSON
+    
+    Args:
+        key: ключ в JSON (например, 'claim_refill')
+        default_mistake: дефолтное значение mistake
+    
+    Returns:
+        int - значение mistake
+    """
+    if _coordinates_data and key in _coordinates_data:
+        coord = _coordinates_data[key]
+        return coord.get('mistake', default_mistake)
+    return default_mistake
+
+# Загружаем координаты с fallback на старые значения (для обратной совместимости)
+# Координаты хранятся в: coordinates/live_arena.json
+claim_refill = get_coordinate('claim_refill', [810, 195, [187, 38, 25]])
+claim_chest = get_coordinate('claim_chest', [534, 448, [233, 0, 0]])
 
 time_mgr = TimeMgr()
 hero_filter = HeroFilter()
@@ -61,10 +127,8 @@ find_opponent = [500, 460, [255, 190, 0]]
 battle_start_turn = [341, 74, [86, 191, 255]]
 refill_free = [454, 373, [187, 130, 5]]
 refill_paid = [444, 393, [195, 40, 66]]
-# Координаты и цвет награды для докупки (обновлено на основе тестирования)
-# Реальный цвет в точке (810, 195): RGB=[187, 38, 25]
-claim_refill = [810, 195, [187, 38, 25]]
-claim_chest = [534, 448, [233, 0, 0]]
+# Координаты claim_refill и claim_chest теперь загружаются из coordinates/live_arena.json
+# См. функцию load_live_arena_coordinates() выше
 
 # return_start_panel = [444, 490]
 
@@ -317,11 +381,12 @@ class ArenaLive(Location):
     def _claim_free_refill_coins(self):
         from helpers.common import rgb_check, get_time_for_log, format_string_for_log, folder_ensure
         
-        # Проверка с погрешностью mistake=20 для устойчивости к небольшим изменениям цвета
+        # Координаты загружаются из coordinates/live_arena.json
+        # Проверка с погрешностью mistake из JSON (по умолчанию 20)
         x_check = claim_refill[0]
         y_check = claim_refill[1]
         expected_rgb = claim_refill[2]
-        mistake = 20
+        mistake = get_coordinate_mistake('claim_refill', default_mistake=20)
         
         # Получаем фактический цвет пикселя
         actual_pixel = pyautogui.pixel(x_check, y_check)

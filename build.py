@@ -208,6 +208,16 @@ def copy_files():
         shutil.rmtree(translations_dest)
     shutil.copytree('translations', translations_dest)
     
+    # Копируем coordinates (координаты для различных локаций)
+    coordinates_dest = os.path.join(main_dir, 'coordinates')
+    if os.path.exists('coordinates'):
+        if os.path.exists(coordinates_dest):
+            shutil.rmtree(coordinates_dest)
+        shutil.copytree('coordinates', coordinates_dest)
+        print(f"Coordinates copied to {coordinates_dest}")
+    else:
+        print("WARNING: coordinates directory not found, skipping...")
+    
     # Копируем config.default.json (пользовательский config.json создается при первом запуске)
     if os.path.exists('config.default.json'):
         shutil.copy('config.default.json', main_dir)
