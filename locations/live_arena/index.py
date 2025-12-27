@@ -62,8 +62,8 @@ battle_start_turn = [341, 74, [86, 191, 255]]
 refill_free = [454, 373, [187, 130, 5]]
 refill_paid = [444, 393, [195, 40, 66]]
 # Координаты и цвет награды для докупки (обновлено на основе тестирования)
-# Реальный цвет в точке (790, 180): RGB=[187, 38, 25]
-claim_refill = [790, 180, [187, 38, 25]]
+# Реальный цвет в точке (810, 195): RGB=[187, 38, 25]
+claim_refill = [810, 195, [187, 38, 25]]
 claim_chest = [534, 448, [233, 0, 0]]
 
 # return_start_panel = [444, 490]
@@ -356,6 +356,34 @@ class ArenaLive(Location):
         img = Image.open(file_path)
         draw = ImageDraw.Draw(img)
         
+        # Рисуем сетку с шагом 20px и подписи координат экрана
+        grid_step = 20
+        grid_color = (100, 100, 100)  # Серый цвет для сетки
+        text_color = (255, 255, 0)  # Желтый цвет для текста
+        img_width, img_height = img.size
+        
+        # Рисуем вертикальные линии и подписываем координаты X экрана
+        for x_rel in range(0, img_width, grid_step):
+            # Абсолютная координата X на экране
+            x_abs = region[0] + x_rel
+            # Рисуем вертикальную линию
+            draw.line([x_rel, 0, x_rel, img_height], fill=grid_color, width=1)
+            # Подписываем координату X экрана
+            text = str(x_abs)
+            bbox = draw.textbbox((0, 0), text)
+            text_width = bbox[2] - bbox[0]
+            draw.text((x_rel - text_width // 2, 0), text, fill=text_color)
+        
+        # Рисуем горизонтальные линии и подписываем координаты Y экрана
+        for y_rel in range(0, img_height, grid_step):
+            # Абсолютная координата Y на экране
+            y_abs = region[1] + y_rel
+            # Рисуем горизонтальную линию
+            draw.line([0, y_rel, img_width, y_rel], fill=grid_color, width=1)
+            # Подписываем координату Y экрана
+            text = str(y_abs)
+            draw.text((0, y_rel), text, fill=text_color)
+        
         # Цвет маркера: зеленый если совпадает, красный если нет
         marker_color = (0, 255, 0) if matches else (255, 0, 0)
         marker_size = 10
@@ -371,7 +399,7 @@ class ArenaLive(Location):
         draw.line([rel_x - cross_size, rel_y, rel_x + cross_size, rel_y], fill=marker_color, width=3)
         draw.line([rel_x, rel_y - cross_size, rel_x, rel_y + cross_size], fill=marker_color, width=3)
         
-        # Сохраняем изображение с маркером
+        # Сохраняем изображение с маркером и сеткой
         img.save(file_path, quality=100)
         
         # Логируем информацию о проверке
