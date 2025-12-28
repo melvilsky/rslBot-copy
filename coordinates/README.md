@@ -10,10 +10,10 @@
 
 ```json
 {
-  "claim_refill": {
-    "x": 810,
-    "y": 195,
-    "rgb": [187, 38, 25],
+  "claim_free_refill_coins": {
+    "x": 878,
+    "y": 160,
+    "rgb": [218, 0, 0],
     "mistake": 20,
     "description": "Описание координат"
   }
