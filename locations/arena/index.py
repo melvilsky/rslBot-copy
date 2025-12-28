@@ -1,4 +1,5 @@
 from helpers.common import *
+from helpers.refill_state import get_remaining_refills, increment_purchase
 from constants.index import *
 from classes.Location import Location
 
@@ -68,6 +69,7 @@ class ArenaFactory(Location):
         self.tiers_coordinates = tiers_coordinates
 
         self.refill = PAID_REFILL_LIMIT
+        self.refill_max_allowed = PAID_REFILL_LIMIT  # Сохраняем максимальное значение из конфига
         self.initial_refresh = False
         self.battle_time_limit = True
         self.max_swipe = 0
@@ -131,7 +133,13 @@ class ArenaFactory(Location):
     def _apply_props(self, props=None):
         if props is not None:
             if 'refill' in props:
-                self.refill = int(props['refill'])
+                refill_from_config = int(props['refill'])
+                self.refill_max_allowed = refill_from_config
+                # Загружаем оставшееся количество проходок с учетом уже купленных сегодня
+                location_key = self.NAME.lower().replace(' ', '_')
+                self.refill = get_remaining_refills(location_key, refill_from_config)
+                if self.refill < refill_from_config:
+                    self.log(f"Refill state loaded: {refill_from_config - self.refill} already purchased today (UTC), {self.refill} remaining")
             if 'initial_refresh' in props:
                 self.initial_refresh = bool(props['initial_refresh'])
             if 'battle_time_limit' in props:
@@ -160,6 +168,9 @@ class ArenaFactory(Location):
         if ruby_button is not None:
             self.log('Free coins are NOT available')
             if self.refill > 0:
+                # Сохраняем факт покупки в состояние
+                location_key = self.NAME.lower().replace(' ', '_')
+                increment_purchase(location_key, self.refill_max_allowed)
                 self.refill -= 1
                 click_on_refill()
                 refilled = True

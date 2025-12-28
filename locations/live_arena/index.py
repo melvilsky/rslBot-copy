@@ -6,6 +6,7 @@ import json
 from PIL import Image, ImageDraw
 
 from helpers.time_mgr import *
+from helpers.refill_state import get_remaining_refills, increment_purchase
 from locations.hero_filter.index import *
 from classes.Location import Location
 
@@ -41,8 +42,8 @@ def get_coordinate(key, default_value):
     """
     Получает координаты из загруженного JSON или возвращает дефолтное значение
     
-    Args:
-        key: ключ в JSON (например, 'claim_refill')
+        Args:
+        key: ключ в JSON (например, 'claim_free_refill_coins')
         default_value: дефолтное значение в формате [x, y, [r, g, b]]
     
     Returns:
@@ -57,8 +58,8 @@ def get_coordinate_mistake(key, default_mistake=20):
     """
     Получает значение mistake (погрешность) для координат из JSON
     
-    Args:
-        key: ключ в JSON (например, 'claim_refill')
+        Args:
+        key: ключ в JSON (например, 'claim_free_refill_coins')
         default_mistake: дефолтное значение mistake
     
     Returns:
@@ -71,7 +72,7 @@ def get_coordinate_mistake(key, default_mistake=20):
 
 # Загружаем координаты с fallback на старые значения (для обратной совместимости)
 # Координаты хранятся в: coordinates/live_arena.json
-claim_refill = get_coordinate('claim_refill', [810, 195, [187, 38, 25]])
+CLAIM_FREE_REFILL_COINS = get_coordinate('claim_free_refill_coins', [810, 195, [187, 38, 25]])
 claim_chest = get_coordinate('claim_chest', [534, 448, [233, 0, 0]])
 
 time_mgr = TimeMgr()
@@ -168,6 +169,7 @@ class ArenaLive(Location):
         self.leaders = []
         self.refill = PAID_REFILL_LIMIT
         self.idle_after_defeat = 0
+        self.refill_max_allowed = PAID_REFILL_LIMIT  # Сохраняем максимальное значение из конфига
 
         # The variable resets each battle start
         self.current = {
@@ -362,7 +364,13 @@ class ArenaLive(Location):
                 self.leaders = props['leaders']
 
         if 'refill' in props:
-            self.refill = int(props['refill'])
+            refill_from_config = int(props['refill'])
+            self.refill_max_allowed = refill_from_config
+            # Загружаем оставшееся количество проходок с учетом уже купленных сегодня
+            location_key = self.NAME.lower().replace(' ', '_')
+            self.refill = get_remaining_refills(location_key, refill_from_config)
+            if self.refill < refill_from_config:
+                self.log(f"Refill state loaded: {refill_from_config - self.refill} already purchased today (UTC), {self.refill} remaining")
 
         if 'idle_after_defeat' in props:
             self.idle_after_defeat = int(props['idle_after_defeat'])
@@ -383,10 +391,10 @@ class ArenaLive(Location):
         
         # Координаты загружаются из coordinates/live_arena.json
         # Проверка с погрешностью mistake из JSON (по умолчанию 20)
-        x_check = claim_refill[0]
-        y_check = claim_refill[1]
-        expected_rgb = claim_refill[2]
-        mistake = get_coordinate_mistake('claim_refill', default_mistake=20)
+        x_check = CLAIM_FREE_REFILL_COINS[0]
+        y_check = CLAIM_FREE_REFILL_COINS[1]
+        expected_rgb = CLAIM_FREE_REFILL_COINS[2]
+        mistake = get_coordinate_mistake('claim_free_refill_coins', default_mistake=20)
         
         # Получаем фактический цвет пикселя
         actual_pixel = pyautogui.pixel(x_check, y_check)
@@ -408,7 +416,7 @@ class ArenaLive(Location):
         output_debug = 'debug'
         time_str = get_time_for_log(s='-')
         folder_ensure(output_debug)
-        file_name = format_string_for_log(f"{time_str}-claim_refill_check_x{x_check}_y{y_check}")
+        file_name = format_string_for_log(f"{time_str}-claim_free_refill_coins_check_x{x_check}_y{y_check}")
         screenshot = pyautogui.screenshot(region=region)
         file_path = os.path.join(output_debug, f"{file_name}.png")
         screenshot.save(file_path, quality=100)
@@ -470,15 +478,15 @@ class ArenaLive(Location):
         # Логируем информацию о проверке
         diff = [abs(actual_rgb[i] - expected_rgb[i]) for i in range(3)]
         max_diff = max(diff)
-        self.log(f"DEBUG claim_refill: координаты ({x_check}, {y_check})")
-        self.log(f"DEBUG claim_refill: ожидаемый RGB {expected_rgb}, фактический RGB {actual_rgb}")
-        self.log(f"DEBUG claim_refill: максимальная разница {max_diff}, mistake={mistake}")
-        self.log(f"DEBUG claim_refill: совпадение {'✅ ДА' if matches else '❌ НЕТ'}")
-        self.log(f"DEBUG claim_refill: скриншот сохранен: {file_path}")
+        self.log(f"DEBUG claim_free_refill_coins: координаты ({x_check}, {y_check})")
+        self.log(f"DEBUG claim_free_refill_coins: ожидаемый RGB {expected_rgb}, фактический RGB {actual_rgb}")
+        self.log(f"DEBUG claim_free_refill_coins: максимальная разница {max_diff}, mistake={mistake}")
+        self.log(f"DEBUG claim_free_refill_coins: совпадение {'✅ ДА' if matches else '❌ НЕТ'}")
+        self.log(f"DEBUG claim_free_refill_coins: скриншот сохранен: {file_path}")
 
         if matches:
-            x = claim_refill[0] - 5
-            y = claim_refill[1] + 5
+            x = CLAIM_FREE_REFILL_COINS[0] - 5
+            y = CLAIM_FREE_REFILL_COINS[1] + 5
             click(x, y)
             sleep(2)
 
@@ -554,6 +562,9 @@ class ArenaLive(Location):
             if self.refill > 0:
                 # wait and click on refill_paid
                 click(refill_paid[0], refill_paid[1], smart=True)
+                # Сохраняем факт покупки в состояние
+                location_key = self.NAME.lower().replace(' ', '_')
+                increment_purchase(location_key, self.refill_max_allowed)
                 self.refill -= 1
                 self._click_on_find_opponent()
             else:
