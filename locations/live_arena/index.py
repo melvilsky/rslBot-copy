@@ -51,7 +51,10 @@ def get_coordinate(key, default_value):
     """
     if _coordinates_data and key in _coordinates_data:
         coord = _coordinates_data[key]
-        return [coord['x'], coord['y'], coord['rgb']]
+        result = [coord['x'], coord['y'], coord['rgb']]
+        print(f"Loaded coordinate '{key}' from JSON: {result}")
+        return result
+    print(f"Using default coordinate for '{key}': {default_value}")
     return default_value
 
 def get_coordinate_mistake(key, default_mistake=20):
@@ -387,104 +390,15 @@ class ArenaLive(Location):
             claim_rewards(x, y)
 
     def _claim_free_refill_coins(self):
-        from helpers.common import rgb_check, get_time_for_log, format_string_for_log, folder_ensure
+        from helpers.common import pixel_check_new
         
         # Координаты загружаются из coordinates/live_arena.json
-        # Проверка с погрешностью mistake из JSON (по умолчанию 20)
-        x_check = CLAIM_FREE_REFILL_COINS[0]
-        y_check = CLAIM_FREE_REFILL_COINS[1]
-        expected_rgb = CLAIM_FREE_REFILL_COINS[2]
+        # Получаем mistake из JSON (по умолчанию 20)
         mistake = get_coordinate_mistake('claim_free_refill_coins', default_mistake=20)
         
-        # Получаем фактический цвет пикселя
-        actual_pixel = pyautogui.pixel(x_check, y_check)
-        actual_rgb = [actual_pixel[0], actual_pixel[1], actual_pixel[2]]
-        
-        # Проверяем совпадение
-        matches = rgb_check(actual_rgb, expected_rgb, mistake=mistake)
-        
-        # Отладка: сохраняем скриншот области вокруг точки проверки с маркером
-        margin = 100
-        region = [
-            max(0, x_check - margin),
-            max(0, y_check - margin),
-            margin * 2,
-            margin * 2
-        ]
-        
-        # Сохраняем скриншот
-        output_debug = 'debug'
-        time_str = get_time_for_log(s='-')
-        folder_ensure(output_debug)
-        file_name = format_string_for_log(f"{time_str}-claim_free_refill_coins_check_x{x_check}_y{y_check}")
-        screenshot = pyautogui.screenshot(region=region)
-        file_path = os.path.join(output_debug, f"{file_name}.png")
-        screenshot.save(file_path, quality=100)
-        
-        # Вычисляем относительные координаты точки проверки в скриншоте
-        rel_x = x_check - region[0]
-        rel_y = y_check - region[1]
-        
-        # Загружаем изображение и рисуем маркер
-        img = Image.open(file_path)
-        draw = ImageDraw.Draw(img)
-        
-        # Рисуем сетку с шагом 20px и подписи координат экрана
-        grid_step = 20
-        grid_color = (100, 100, 100)  # Серый цвет для сетки
-        text_color = (255, 255, 0)  # Желтый цвет для текста
-        img_width, img_height = img.size
-        
-        # Рисуем вертикальные линии и подписываем координаты X экрана
-        for x_rel in range(0, img_width, grid_step):
-            # Абсолютная координата X на экране
-            x_abs = region[0] + x_rel
-            # Рисуем вертикальную линию
-            draw.line([x_rel, 0, x_rel, img_height], fill=grid_color, width=1)
-            # Подписываем координату X экрана
-            text = str(x_abs)
-            bbox = draw.textbbox((0, 0), text)
-            text_width = bbox[2] - bbox[0]
-            draw.text((x_rel - text_width // 2, 0), text, fill=text_color)
-        
-        # Рисуем горизонтальные линии и подписываем координаты Y экрана
-        for y_rel in range(0, img_height, grid_step):
-            # Абсолютная координата Y на экране
-            y_abs = region[1] + y_rel
-            # Рисуем горизонтальную линию
-            draw.line([0, y_rel, img_width, y_rel], fill=grid_color, width=1)
-            # Подписываем координату Y экрана
-            text = str(y_abs)
-            draw.text((0, y_rel), text, fill=text_color)
-        
-        # Цвет маркера: зеленый если совпадает, красный если нет
-        marker_color = (0, 255, 0) if matches else (255, 0, 0)
-        marker_size = 10
-        
-        # Рисуем круг
-        draw.ellipse(
-            [rel_x - marker_size, rel_y - marker_size, rel_x + marker_size, rel_y + marker_size],
-            outline=marker_color,
-            width=3
-        )
-        # Рисуем крестик
-        cross_size = marker_size * 2
-        draw.line([rel_x - cross_size, rel_y, rel_x + cross_size, rel_y], fill=marker_color, width=3)
-        draw.line([rel_x, rel_y - cross_size, rel_x, rel_y + cross_size], fill=marker_color, width=3)
-        
-        # Сохраняем изображение с маркером и сеткой
-        img.save(file_path, quality=100)
-        
-        # Логируем информацию о проверке
-        diff = [abs(actual_rgb[i] - expected_rgb[i]) for i in range(3)]
-        max_diff = max(diff)
-        self.log(f"DEBUG claim_free_refill_coins: координаты ({x_check}, {y_check})")
-        self.log(f"DEBUG claim_free_refill_coins: ожидаемый RGB {expected_rgb}, фактический RGB {actual_rgb}")
-        self.log(f"DEBUG claim_free_refill_coins: максимальная разница {max_diff}, mistake={mistake}")
-        self.log(f"DEBUG claim_free_refill_coins: совпадение {'✅ ДА' if matches else '❌ НЕТ'}")
-        self.log(f"DEBUG claim_free_refill_coins: скриншот сохранен: {file_path}")
-
-        if matches:
+        # Используем pixel_check_new с координатами из JSON
+        # CLAIM_FREE_REFILL_COINS уже загружен из JSON через get_coordinate()
+        if pixel_check_new(CLAIM_FREE_REFILL_COINS, mistake=mistake):
             x = CLAIM_FREE_REFILL_COINS[0] - 5
             y = CLAIM_FREE_REFILL_COINS[1] + 5
             click(x, y)
