@@ -1,8 +1,8 @@
 {
-  "claim_refill": {
-    "x": 810,
-    "y": 195,
-    "rgb": [187, 38, 25],
+  "claim_free_refill_coins": {
+    "x": 878,
+    "y": 160,
+    "rgb": [218, 0, 0],
     "mistake": 20,
     "description": "Координаты награды для докупки в Live Arena"
   },
@@ -11,6 +11,20 @@
     "y": 448,
     "rgb": [233, 0, 0],
     "description": "Координаты сундука в Live Arena"
+  },
+  "refill_free": {
+    "x": 454,
+    "y": 373,
+    "rgb": [187, 130, 5],
+    "mistake": 10,
+    "description": "Координаты кнопки бесплатного рефилла в Live Arena"
+  },
+  "refill_paid": {
+    "x": 444,
+    "y": 393,
+    "rgb": [195, 40, 66],
+    "mistake": 10,
+    "description": "Координаты кнопки платного рефилла в Live Arena"
   }
 }
 

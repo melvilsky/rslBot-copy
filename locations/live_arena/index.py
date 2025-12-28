@@ -37,25 +37,31 @@ def load_live_arena_coordinates():
 # Загружаем координаты при импорте модуля
 _coordinates_data = load_live_arena_coordinates()
 
-# Функция для получения координат с fallback на дефолтные значения
-def get_coordinate(key, default_value):
+# Функция для получения координат из JSON (без дефолтных значений)
+def get_coordinate(key):
     """
-    Получает координаты из загруженного JSON или возвращает дефолтное значение
+    Получает координаты из загруженного JSON.
+    Выбрасывает ошибку, если координаты не найдены.
     
         Args:
         key: ключ в JSON (например, 'claim_free_refill_coins')
-        default_value: дефолтное значение в формате [x, y, [r, g, b]]
     
     Returns:
         [x, y, [r, g, b]] - координаты и RGB
+    
+    Raises:
+        ValueError: если координаты не найдены в JSON
     """
-    if _coordinates_data and key in _coordinates_data:
-        coord = _coordinates_data[key]
-        result = [coord['x'], coord['y'], coord['rgb']]
-        print(f"Loaded coordinate '{key}' from JSON: {result}")
-        return result
-    print(f"Using default coordinate for '{key}': {default_value}")
-    return default_value
+    if not _coordinates_data:
+        raise ValueError(f"Coordinates data not loaded from JSON file. Key '{key}' not found.")
+    
+    if key not in _coordinates_data:
+        raise ValueError(f"Coordinate '{key}' not found in coordinates/live_arena.json. Please add it to the JSON file.")
+    
+    coord = _coordinates_data[key]
+    result = [coord['x'], coord['y'], coord['rgb']]
+    print(f"Loaded coordinate '{key}' from JSON: {result}")
+    return result
 
 def get_coordinate_mistake(key, default_mistake=20):
     """
@@ -73,10 +79,12 @@ def get_coordinate_mistake(key, default_mistake=20):
         return coord.get('mistake', default_mistake)
     return default_mistake
 
-# Загружаем координаты с fallback на старые значения (для обратной совместимости)
-# Координаты хранятся в: coordinates/live_arena.json
-CLAIM_FREE_REFILL_COINS = get_coordinate('claim_free_refill_coins', [810, 195, [187, 38, 25]])
-claim_chest = get_coordinate('claim_chest', [534, 448, [233, 0, 0]])
+# Загружаем координаты из coordinates/live_arena.json
+# Все координаты должны быть указаны в JSON файле, дефолтных значений нет
+CLAIM_FREE_REFILL_COINS = get_coordinate('claim_free_refill_coins')
+claim_chest = get_coordinate('claim_chest')
+refill_free = get_coordinate('refill_free')
+refill_paid = get_coordinate('refill_paid')
 
 time_mgr = TimeMgr()
 hero_filter = HeroFilter()
@@ -129,10 +137,7 @@ defeat = [451, 38, [199, 26, 48]]
 
 find_opponent = [500, 460, [255, 190, 0]]
 battle_start_turn = [341, 74, [86, 191, 255]]
-refill_free = [454, 373, [187, 130, 5]]
-refill_paid = [444, 393, [195, 40, 66]]
-# Координаты claim_refill и claim_chest теперь загружаются из coordinates/live_arena.json
-# См. функцию load_live_arena_coordinates() выше
+# Координаты refill_free и refill_paid загружаются выше через get_coordinate()
 
 # return_start_panel = [444, 490]
 
@@ -396,13 +401,22 @@ class ArenaLive(Location):
         # Получаем mistake из JSON (по умолчанию 20)
         mistake = get_coordinate_mistake('claim_free_refill_coins', default_mistake=20)
         
+        # Логируем используемые координаты для отладки
+        x_check = CLAIM_FREE_REFILL_COINS[0]
+        y_check = CLAIM_FREE_REFILL_COINS[1]
+        expected_rgb = CLAIM_FREE_REFILL_COINS[2]
+        self.log(f"Checking claim_free_refill_coins at coordinates ({x_check}, {y_check}) with RGB {expected_rgb}, mistake={mistake}")
+        
         # Используем pixel_check_new с координатами из JSON
         # CLAIM_FREE_REFILL_COINS уже загружен из JSON через get_coordinate()
         if pixel_check_new(CLAIM_FREE_REFILL_COINS, mistake=mistake):
             x = CLAIM_FREE_REFILL_COINS[0] - 5
             y = CLAIM_FREE_REFILL_COINS[1] + 5
+            self.log(f"Red dot found! Clicking at ({x}, {y})")
             click(x, y)
             sleep(2)
+        else:
+            self.log(f"Red dot NOT found at ({x_check}, {y_check})")
 
     def _click_on_find_opponent(self):
         # Отладочный вывод: проверяем цвет пикселя перед ожиданием
@@ -484,7 +498,7 @@ class ArenaLive(Location):
             else:
                 self.log('No more refill')
                 self.terminate()
-        elif pixels_wait([refill_free], msg='Free refill sacs', mistake=10, timeout=1, wait_limit=2)[0]:
+        elif pixels_wait([refill_free], msg='Free refill sacs', mistake=get_coordinate_mistake('refill_free', default_mistake=10), timeout=1, wait_limit=2)[0]:
             self.log('Free coins are available')
             # wait and click on refill_free
             click(refill_free[0], refill_free[1], smart=True)
