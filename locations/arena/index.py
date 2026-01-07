@@ -282,8 +282,36 @@ class ArenaFactory(Location):
                 result_name = 'VICTORY' if res else 'DEFEAT'
                 self.log(result_name)
 
-                tap_to_continue(times=2)
-                sleep(1)
+                # Увеличенные таймауты для закрытия экрана победы/поражения
+                tap_to_continue(times=2, wait_after=3)
+                sleep(2)
+                
+                # Проверка, что экран победы/поражения закрылся
+                # Ждем исчезновения defeat пикселя (максимум 7 секунд)
+                max_wait_time = 7
+                check_interval = 0.5
+                waited = 0
+                while pixel_check_new(defeat, 20) and waited < max_wait_time:
+                    sleep(check_interval)
+                    waited += check_interval
+                
+                if pixel_check_new(defeat, 20):
+                    # Если экран победы все еще виден, повторяем tap_to_continue
+                    self.log('Victory/defeat screen still visible, retrying tap_to_continue')
+                    tap_to_continue(times=2, wait_after=3)
+                    sleep(2)
+                    
+                    # Повторная проверка
+                    waited = 0
+                    while pixel_check_new(defeat, 20) and waited < max_wait_time:
+                        sleep(check_interval)
+                        waited += check_interval
+                
+                if not pixel_check_new(defeat, 20):
+                    self.log('Victory/defeat screen closed successfully')
+                else:
+                    self.log('Warning: Victory/defeat screen may still be visible')
+                
                 # tells to skip several teams by swiping
                 should_use_multi_swipe = True
 
