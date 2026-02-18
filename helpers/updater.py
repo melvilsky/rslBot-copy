@@ -6,6 +6,8 @@ import json
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
+import ssl
+import certifi
 
 
 # GitHub репозиторий (можно переопределить через переменную окружения)
@@ -58,7 +60,8 @@ def get_latest_version():
         else:
             print(f"Fetching latest version from: {url} (public)")
         
-        with urllib.request.urlopen(req, timeout=10) as response:
+        context = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(req, timeout=10, context=context) as response:
             if response.status != 200:
                 print(f"HTTP Error {response.status}: {response.reason}")
                 return None

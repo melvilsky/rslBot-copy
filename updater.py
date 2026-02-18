@@ -15,6 +15,8 @@ import urllib.error
 import argparse
 import psutil
 import json
+import ssl
+import certifi
 
 # Имя процесса основного приложения
 MAIN_APP_PROCESS = 'RaidSL-Telegram-Bot.exe'
@@ -30,7 +32,9 @@ def download_file(url, destination):
     """Скачивает файл по URL"""
     try:
         log(f"Downloading from {url}...")
-        urllib.request.urlretrieve(url, destination)
+        context = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(url, context=context) as response, open(destination, 'wb') as out_file:
+            shutil.copyfileobj(response, out_file)
         log(f"Downloaded to {destination}")
         return True
     except urllib.error.URLError as e:

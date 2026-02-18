@@ -6,6 +6,7 @@ import time
 import random
 import os
 import glob
+from pathlib import Path
 import np
 import json
 import re
@@ -20,7 +21,12 @@ import PIL
 import sys
 import copy
 import traceback
+import copy
+import traceback
 import random
+import logging
+import sys
+from logging.handlers import RotatingFileHandler
 
 time_mgr = TimeMgr()
 
@@ -93,38 +99,65 @@ def format_string_for_log(input_string):
     return formatted_string
 
 
+# Configure logging
+logger = logging.getLogger('RSLBot')
+logger.setLevel(logging.INFO)
+
+if not logger.handlers:
+    # Console Handler
+    c_handler = logging.StreamHandler(sys.stdout)
+    c_format = logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S')
+    c_handler.setFormatter(c_format)
+    logger.addHandler(c_handler)
+
+    # File Handler
+    try:
+        log_filename = f"log-{datetime.now().strftime('%Y-%m-%d')}.txt"
+        f_handler = RotatingFileHandler(log_filename, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+        f_handler.setFormatter(c_format)
+        logger.addHandler(f_handler)
+    except Exception as e:
+        print(f"Failed to setup log file handler: {e}")
+
+def get_time_for_log(s=':'):
+    return '{}'.format(str(datetime.now().strftime(f"%H{s}%M{s}%S")))
+
+
+def format_string_for_log(input_string):
+    # Remove special characters and convert to lowercase
+    clean_string = re.sub(r'[^a-zA-Z0-9-\-\s]', '', input_string).lower()
+    # Replace spaces with underscores
+    formatted_string = clean_string.replace(' ', '_')
+    return formatted_string
+
+
 def log_save(message):
-    if not IS_DEV:
-        time = get_time_for_log()
-        current_date = time_mgr.timestamp_to_datetime()
-        file_name = 'log-' + f'{current_date["day"]}-{current_date["month"]}-{current_date["year"]}' + '.txt'
-        f = open(file_name, "a")
-        string = str(f"{time} | {message} | \n".encode('utf-8'))
-        f.write(string)
-        f.close()
+    # Backward compatibility checks
+    logger.error(message)
 
 
 def log(message):
-    time = get_time_for_log()
+    # time = get_time_for_log()
 
     if type(message) is dict:
         output = json.dumps(message, indent=2)
     elif type(message) is list:
-        output = np.array(message, dtype=object)
+        output = str(np.array(message, dtype=object))
     elif type(message) is str:
         output = message
     else:
         output = str(message)
 
-    print(time + ' | ', output)
-    log_save(str(message))
+    logger.info(output)
+    # log_save(str(message)) - logger handles file writing now
 
 
 def folder_ensure(folder_path):
     # Check if the folder exists
-    if not os.path.exists(os.path.normpath(folder_path)):
+    path = Path(folder_path)
+    if not path.exists():
         # If the folder doesn't exist, create it
-        os.makedirs(folder_path)
+        path.mkdir(parents=True, exist_ok=True)
         print(f"Folder '{folder_path}' created successfully.")
 
 
@@ -189,7 +222,7 @@ def filter_close_boxes(boxes, threshold=10):
 
 
 def capture_by_source(src, region, confidence=.8, grayscale=False, return_boxes=False, flip=False):
-    src = os.path.normpath(src)
+    src = str(Path(src).resolve())
 
     if flip:
         original_img = cv2.imread(src)
@@ -284,15 +317,15 @@ def debug_save_screenshot(
         region[0] = int(R_WINDOW_DEFAULT[2] / 2 - region[2] / 2)
         region[1] = y
 
-    output_debug = 'debug'
+    output_debug = Path('debug')
     if output is not None:
-        output_debug = os.path.normpath(f"{output_debug}/{output}")
+        output_debug = output_debug / output
 
     time = get_time_for_log(s='-')
     folder_ensure(output_debug)
     file_name = format_string_for_log(f"{time}-{str(suffix_name).lower()}" if suffix_name else time)
     screenshot = pyautogui.screenshot(region=region)
-    screenshot.save(os.path.join(output_debug, f"{file_name}.{ext}"), quality=quality)
+    screenshot.save(str(output_debug / f"{file_name}.{ext}"), quality=quality)
 
 
 def debug_click_coordinates(x, y, label="click", region=None):
@@ -365,17 +398,16 @@ def debug_click_coordinates(x, y, label="click", region=None):
                    (rel_x - text_width // 2, rel_y - text_height - 10),
                    font, font_scale, text_color, thickness, cv2.LINE_AA)
         
-        # Сохраняем скриншот
-        output_debug = 'debug/clicks'
+        output_debug = Path('debug/clicks')
         folder_ensure(output_debug)
         time_str = get_time_for_log(s='-')
         file_name = f"{time_str}-{label}-[{x}-{y}].jpg"
-        file_path = os.path.join(output_debug, file_name)
+        file_path = output_debug / file_name
         
         # Конвертируем обратно в RGB для сохранения
         img_rgb = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img_rgb)
-        img_pil.save(file_path, quality=95)
+        img_pil.save(str(file_path), quality=95)
         
         log(f"DEBUG: Click screenshot saved: {file_path} | Coordinates: [{x}, {y}]")
         
@@ -783,7 +815,7 @@ def make_lambda(predicate, *args):
 
 def image_path(image):
     # @TODO Does not work as expected
-    return os.path.join(os.getcwd(), 'image', image)
+    return str(Path.cwd() / 'image' / image)
 
 
 def find_needle(
@@ -806,7 +838,7 @@ def find_needle(
     if should_move_out_cursor:
         move_out_cursor()
 
-    path_image = os.path.join(os.getcwd(), 'images/needles/' + image_name)
+    path_image = str(Path.cwd() / 'images/needles' / image_name)
 
     if scale:
         physical_image = cv2.imread(path_image)

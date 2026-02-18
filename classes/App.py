@@ -491,7 +491,7 @@ class App(Foundation):
         except Exception as e:
             self.log(f"Error checking for updates: {e}")
             import traceback
-            traceback.print_exc()
+            log_save(traceback.format_exc())
 
     def check_update_status(self, telegram_bot=None):
         """
@@ -552,7 +552,7 @@ class App(Foundation):
             error_msg = f"❌ Ошибка при проверке обновлений: {e}"
             self.log(error_msg)
             import traceback
-            traceback.print_exc()
+            log_save(traceback.format_exc())
             return error_msg
 
     def clear_chat(self, update=None, context=None, telegram_bot=None, limit=100):
@@ -645,7 +645,7 @@ class App(Foundation):
                 error_msg = f"❌ Ошибка при очистке чата: {e}"
                 self.log(error_msg)
                 import traceback
-                traceback.print_exc()
+                log_save(traceback.format_exc())
                 return error_msg
                 
         except Exception as e:
