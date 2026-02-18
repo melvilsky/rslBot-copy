@@ -15,17 +15,30 @@ from datetime import datetime
 from constants.index import IS_DEV
 from helpers.time_mgr import *
 from constants.index import *
+
+# Debug State Management
+_DEBUG_MODE = False
+
+def set_debug_mode(enabled: bool):
+    global _DEBUG_MODE
+    _DEBUG_MODE = enabled
+    # Update logger level
+    if enabled:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+
+def is_debug_mode():
+    global _DEBUG_MODE
+    return _DEBUG_MODE
 import pytesseract
 from PIL import Image
 import PIL
 import sys
 import copy
 import traceback
-import copy
-import traceback
 import random
 import logging
-import sys
 from logging.handlers import RotatingFileHandler
 
 time_mgr = TimeMgr()
@@ -118,17 +131,6 @@ if not logger.handlers:
         logger.addHandler(f_handler)
     except Exception as e:
         print(f"Failed to setup log file handler: {e}")
-
-def get_time_for_log(s=':'):
-    return '{}'.format(str(datetime.now().strftime(f"%H{s}%M{s}%S")))
-
-
-def format_string_for_log(input_string):
-    # Remove special characters and convert to lowercase
-    clean_string = re.sub(r'[^a-zA-Z0-9-\-\s]', '', input_string).lower()
-    # Replace spaces with underscores
-    formatted_string = clean_string.replace(' ', '_')
-    return formatted_string
 
 
 def log_save(message):
@@ -254,8 +256,9 @@ def capture_by_source(src, region, confidence=.8, grayscale=False, return_boxes=
 
 def click(x, y, smart=False, timeout=0.5, interval=2, random_click=None):
     # Отладка: логируем координаты и сохраняем скриншот
-    from constants.index import DEBUG_MODE
-    if DEBUG_MODE:
+    # Отладка: логируем координаты и сохраняем скриншот
+    # from constants.index import DEBUG_MODE - removed
+    if is_debug_mode():
         log(f"DEBUG click: coordinates [{x}, {y}]")
         debug_click_coordinates(x, y, label="click")
     
@@ -265,7 +268,7 @@ def click(x, y, smart=False, timeout=0.5, interval=2, random_click=None):
         max_random = random_click if type(random_click) is int else 5
         x += random.randint(1, max_random)
         y += random.randint(1, max_random)
-        if DEBUG_MODE:
+        if is_debug_mode():
             log(f"DEBUG click: after random offset [{x}, {y}]")
             debug_click_coordinates(x, y, label="click-random")
 
@@ -782,16 +785,36 @@ def clear_folder(path):
 
 
 def show_pyautogui_image(pyautogui_screenshot, title='match'):
+    if not is_debug_mode():
+        return
+
+    output_debug = Path('debug/images')
+    folder_ensure(output_debug)
+    time_str = get_time_for_log(s='-')
+    
     open_cv_image = np.array(pyautogui_screenshot)
     open_cv_image = open_cv_image[:, :, ::-1].copy()
-    cv2.imshow(title, open_cv_image)
-    cv2.moveWindow(title, 1000, 1000)
-    cv2.waitKey()
+    
+    file_name = f"{time_str}-{title}.jpg"
+    cv2.imwrite(str(output_debug / file_name), open_cv_image)
+    log(f"Debug image saved: {output_debug / file_name}")
 
 
 def show_image(path=None, image=None, title='Image'):
+    if not is_debug_mode():
+        return
+
+    output_debug = Path('debug/images')
+    folder_ensure(output_debug)
+    time_str = get_time_for_log(s='-')
+    file_name = f"{time_str}-{title}.jpg"
+
     if path:
         image = cv2.imread(path)
+    
+    if image is not None:
+        cv2.imwrite(str(output_debug / file_name), image)
+        log(f"Debug image saved: {output_debug / file_name}")
 
     cv2.imshow(title, image)
     cv2.moveWindow(title, 1000, 1000)
@@ -1291,7 +1314,11 @@ def read_text(
         transform_predicate=None,
         lang=None
 ):
-    # debug = True
+    # debug = True- removed
+    # If debug is explicitly passed as False (default), check global setting
+    if not debug:
+        debug = is_debug_mode()
+        
     res = []
     screenshot = None
     if configs is None:
@@ -1321,9 +1348,9 @@ def read_text(
             img = transform_predicate(img)
 
         # Debug
+        # Debug
         if debug and i == 0:
-            cv2.imshow(title, img)
-            cv2.waitKey()
+            show_image(image=img, title=f"read_text_{title}")
 
         text = pytesseract.image_to_string(img, config=configs[i], lang=lang)
         res.append(text.strip())

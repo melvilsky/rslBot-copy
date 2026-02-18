@@ -1,5 +1,6 @@
 {
   "start_immediate": 1,
+  "debug": false,
   "game_path": "",
   "telegram_token": "",
   "lang": "",

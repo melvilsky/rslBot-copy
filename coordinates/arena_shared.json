@@ -1,0 +1,79 @@
+{
+  "button_refresh": {
+    "x": 817,
+    "y": 133,
+    "rgb": [22, 124, 156],
+    "mistake": 5,
+    "description": "Кнопка обновления списка противников"
+  },
+  "refill_free": {
+    "x": 455,
+    "y": 380,
+    "rgb": [187, 130, 5],
+    "mistake": 10,
+    "description": "Кнопка бесплатного рефилла"
+  },
+  "refill_paid": {
+    "x": 440,
+    "y": 376,
+    "rgb": [255, 33, 51],
+    "mistake": 10,
+    "description": "Кнопка платного рефилла"
+  },
+  "defeat": {
+    "x": 443,
+    "y": 51,
+    "rgb": [229, 40, 104],
+    "mistake": 20,
+    "description": "Пиксель поражения на экране результата боя"
+  },
+  "tab_battle": {
+    "x": 110,
+    "y": 115,
+    "rgb": [2, 93, 154],
+    "description": "Вкладка битвы"
+  },
+  "battle_end": {
+    "x": 20,
+    "y": 46,
+    "rgb": [255, 255, 255],
+    "mistake": 3,
+    "description": "Индикатор конца боя (белые часы в левом верхнем углу)"
+  },
+  "start_battle": {
+    "x": 860,
+    "y": 480,
+    "description": "Кнопка начала боя (confirm/start)"
+  },
+  "refill_click": {
+    "x": 439,
+    "y": 395,
+    "description": "Клик по кнопке рефилла в диалоге докупки"
+  },
+  "claim_chest": {
+    "x": 455,
+    "y": 455,
+    "description": "Клик по кнопке получения награды из сундука"
+  },
+  "red_dot_rgb": [225, 0, 0],
+  "attack_button_rgb": [187, 130, 5],
+  "swipe_attack": {
+    "x": 580,
+    "y": 254,
+    "description": "Начальная точка свайпа для прокрутки списка противников"
+  },
+  "swipe_refresh": {
+    "direction": "top",
+    "x": 560,
+    "y": 200,
+    "distance": 300,
+    "description": "Свайп вверх для обновления списка"
+  },
+  "swipe_reward": {
+    "direction": "right",
+    "x": 600,
+    "y": 350,
+    "distance": 400,
+    "description": "Свайп вправо для просмотра наград"
+  }
+}

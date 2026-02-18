@@ -1,24 +1,125 @@
+import os
+import json
+
 from helpers.common import *
 from helpers.refill_state import get_remaining_refills, increment_purchase
 from constants.index import *
 from classes.Location import Location
 
-button_refresh = [817, 133, [22, 124, 156]]
-refill_free = [455, 380, [187, 130, 5]]
-refill_paid = [440, 376, [255, 33, 51]]
-defeat = [443, 51, [229, 40, 104]]
-tab_battle = [110, 115, [2, 93, 154]]
+# ============================================================================
+# КООРДИНАТЫ ХРАНЯТСЯ В:
+#   coordinates/arena_shared.json   — общие для ArenaFactory (Tag + Classic)
+#   coordinates/arena_tag.json      — только Arena Tag
+#   coordinates/arena_classic.json  — только Arena Classic
+# Для изменения координат отредактируйте JSON и перезапустите приложение
+# ============================================================================
 
-RGB_RED_DOT = [225, 0, 0]
+
+def load_arena_coordinates(filename):
+    """Загружает координаты из JSON файла в папке coordinates/"""
+    try:
+        coords_path = os.path.join('coordinates', filename)
+        if os.path.exists(coords_path):
+            with open(coords_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return None
+    except Exception as e:
+        print(f"Ошибка загрузки координат из coordinates/{filename}: {e}")
+        return None
+
+
+def get_arena_coordinate(data, key):
+    """
+    Получает координату из загруженного JSON.
+    Returns: [x, y, [r, g, b]] если есть rgb, иначе [x, y]
+    Raises: ValueError если ключ не найден
+    """
+    if not data or key not in data:
+        raise ValueError(f"Coordinate '{key}' not found in arena coordinates JSON")
+    coord = data[key]
+    if 'rgb' in coord:
+        return [coord['x'], coord['y'], coord['rgb']]
+    return [coord['x'], coord['y']]
+
+
+def get_arena_mistake(data, key, default=20):
+    """Получает значение mistake (погрешность) из JSON"""
+    if data and key in data:
+        coord = data[key]
+        if isinstance(coord, dict):
+            return coord.get('mistake', default)
+    return default
+
+
+def _parse_button_locations(data, key):
+    """Конвертирует button_locations из JSON формата {str: {x,y}} в {int: [x,y]}"""
+    bl = data[key]
+    return {int(k): [v['x'], v['y']] for k, v in bl.items()}
+
+
+def _parse_point(data, key):
+    """Конвертирует {x, y} из JSON в [x, y]"""
+    p = data[key]
+    return [p['x'], p['y']]
+
+
+# Загружаем координаты при импорте модуля
+_shared = load_arena_coordinates('arena_shared.json')
+_tag_data = load_arena_coordinates('arena_tag.json')
+_classic_data = load_arena_coordinates('arena_classic.json')
+
+# Общие координаты ArenaFactory (из arena_shared.json)
+button_refresh = get_arena_coordinate(_shared, 'button_refresh')
+refill_free = get_arena_coordinate(_shared, 'refill_free')
+refill_paid = get_arena_coordinate(_shared, 'refill_paid')
+defeat = get_arena_coordinate(_shared, 'defeat')
+tab_battle = get_arena_coordinate(_shared, 'tab_battle')
+battle_end_coord = get_arena_coordinate(_shared, 'battle_end')
+start_battle_coord = get_arena_coordinate(_shared, 'start_battle')
+refill_click_coord = get_arena_coordinate(_shared, 'refill_click')
+claim_chest_coord = get_arena_coordinate(_shared, 'claim_chest')
+swipe_attack_coord = _shared['swipe_attack']
+swipe_refresh_coord = _shared['swipe_refresh']
+swipe_reward_coord = _shared['swipe_reward']
+
+RGB_RED_DOT = _shared['red_dot_rgb']
+ATTACK_BUTTON_RGB = _shared['attack_button_rgb']
 PAID_REFILL_LIMIT = 0
 OUTPUT_ITEMS_AMOUNT = 10
+
+# Логика обхода списка противников (не координаты — остаётся в коде)
+CLASSIC_ITEM_LOCATIONS = [
+    {'swipes': 0, 'position': 1},
+    {'swipes': 1, 'position': 1},
+    {'swipes': 2, 'position': 1},
+    {'swipes': 3, 'position': 1},
+    {'swipes': 4, 'position': 1},
+    {'swipes': 5, 'position': 1},
+    {'swipes': 6, 'position': 1},
+    {'swipes': 6, 'position': 2},
+    {'swipes': 6, 'position': 3},
+    {'swipes': 6, 'position': 4},
+]
+TAG_ITEM_LOCATIONS = [
+    {'swipes': 0, 'position': 1},
+    {'swipes': 1, 'position': 1},
+    {'swipes': 2, 'position': 1},
+    {'swipes': 3, 'position': 1},
+    {'swipes': 4, 'position': 1},
+    {'swipes': 5, 'position': 1},
+    {'swipes': 6, 'position': 1},
+    {'swipes': 6, 'position': 2},
+    {'swipes': 6, 'position': 3},
+    {'swipes': 6, 'position': 4},
+]
 
 
 def callback_refresh(*args):
     click(button_refresh[0], button_refresh[1])
     sleep(3)
+    _sr = swipe_refresh_coord
     for index in range(2):
-        swipe_new('top', 560, 200, 300, speed=.2, instant_move=True)
+        swipe_new(_sr['direction'], _sr['x'], _sr['y'], _sr['distance'], speed=.2, instant_move=True)
     sleep(2)
 
 
@@ -76,8 +177,9 @@ class ArenaFactory(Location):
 
         self._apply_props(props=props)
 
+        _be_mistake = get_arena_mistake(_shared, 'battle_end', 3)
         self.E_BATTLE_END = prepare_event(self.E_BATTLE_END, {
-            "expect": lambda: pixel_check_new([20, 46, [255, 255, 255]], mistake=3)
+            "expect": lambda: pixel_check_new(battle_end_coord, mistake=_be_mistake)
         })
 
         for i in range(len(self.item_locations)):
@@ -159,7 +261,7 @@ class ArenaFactory(Location):
         refilled = False
 
         def click_on_refill():
-            click(439, 395)
+            click(refill_click_coord[0], refill_click_coord[1])
             sleep(0.5)
 
         sleep(1)
@@ -201,18 +303,17 @@ class ArenaFactory(Location):
             click(x, y)
             sleep(1)
 
+            _sw = swipe_reward_coord
             dot = find_needle_arena_reward()
             for i in range(3):
-                swipe('right', 600, 350, 400, speed=.6, sleep_after_end=.2)
+                swipe(_sw['direction'], _sw['x'], _sw['y'], _sw['distance'], speed=.6, sleep_after_end=.2)
                 dot = find_needle_arena_reward()
                 if dot is not None:
                     x = dot[0]
                     y = dot[1] + 20
-                    # click on the chest
                     click(x, y)
                     sleep(1)
-                    # click on the claim
-                    click(455, 455)
+                    click(claim_chest_coord[0], claim_chest_coord[1])
                     sleep(1)
                     break
 
@@ -223,14 +324,16 @@ class ArenaFactory(Location):
         results_local = []
         should_use_multi_swipe = False
 
+        _sa = swipe_attack_coord
+
         def inner_swipe(swipes_amount):
             if should_use_multi_swipe:
                 for j in range(swipes_amount):
                     sleep(1)
-                    swipe_new('bottom', 580, 254, self.item_height, speed=.5)
+                    swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
             # @TODO Tag-arena does not work well because of 'max_swipe' value
             elif 0 < i <= self.max_swipe:
-                swipe_new('bottom', 580, 254, self.item_height, speed=.5)
+                swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
 
         for i in range(len(self.item_locations)):
             if self.terminated:
@@ -249,12 +352,12 @@ class ArenaFactory(Location):
                 sleep(1.5)
 
             def click_on_start():
-                click(860, 480, smart=True)
+                click(start_battle_coord[0], start_battle_coord[1], smart=True)
                 sleep(0.5)
 
             # checking - is an enemy already attacked
             is_not_attacked = len(results_local) - 1 < i
-            if pixel_check_new([x, y, [187, 130, 5]]) and is_not_attacked:
+            if pixel_check_new([x, y, ATTACK_BUTTON_RGB]) and is_not_attacked:
                 self.log(self.name + ' | Attack')
                 click_on_battle()
 
@@ -328,13 +431,13 @@ class ArenaClassic(ArenaFactory):
             self,
             app=app,
             name='Arena Classic',
-            x_axis_info=95,
+            x_axis_info=_classic_data['x_axis_info'],
             read_coins_predicate=read_bank_arena_classic,
-            item_height=CLASSIC_ITEM_HEIGHT,
-            button_locations=CLASSIC_BUTTON_LOCATIONS,
+            item_height=_classic_data['item_height'],
+            button_locations=_parse_button_locations(_classic_data, 'button_locations'),
             item_locations=CLASSIC_ITEM_LOCATIONS,
-            refill_coordinates=CLASSIC_COINS_REFILL,
-            tiers_coordinates=CLASSIC_TIERS_COORDINATE,
+            refill_coordinates=_parse_point(_classic_data, 'coins_refill'),
+            tiers_coordinates=_parse_point(_classic_data, 'tiers_coordinate'),
             props=props
         )
 
@@ -345,12 +448,12 @@ class ArenaTag(ArenaFactory):
             self,
             app=app,
             name='Arena Tag',
-            x_axis_info=135,
+            x_axis_info=_tag_data['x_axis_info'],
             read_coins_predicate=read_bank_arena_tag,
-            item_height=TAG_ITEM_HEIGHT,
-            button_locations=TAG_BUTTON_LOCATIONS,
+            item_height=_tag_data['item_height'],
+            button_locations=_parse_button_locations(_tag_data, 'button_locations'),
             item_locations=TAG_ITEM_LOCATIONS,
-            refill_coordinates=TAG_COINS_REFILL,
-            tiers_coordinates=TAG_TIERS_COORDINATE,
+            refill_coordinates=_parse_point(_tag_data, 'coins_refill'),
+            tiers_coordinates=_parse_point(_tag_data, 'tiers_coordinate'),
             props=props
         )

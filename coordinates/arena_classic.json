@@ -1,0 +1,13 @@
+{
+  "x_axis_info": 95,
+  "item_height": 96,
+  "button_locations": {
+    "1": { "x": 855, "y": 205 },
+    "2": { "x": 855, "y": 295 },
+    "3": { "x": 855, "y": 380 },
+    "4": { "x": 855, "y": 470 }
+  },
+  "coins_region": [636, 38, 668, 55],
+  "coins_refill": { "x": 624, "y": 48 },
+  "tiers_coordinate": { "x": 154, "y": 299 }
+}

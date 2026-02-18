@@ -325,8 +325,17 @@ class App(Foundation):
             'presets': [],
             'after_each': [],
             'game_path': '',
-            'lang': None
+            'lang': None,
+            'debug': False
         }
+
+        if 'debug' in config_json:
+            _config['debug'] = bool(config_json['debug'])
+            
+        # Apply debug mode immediately
+        set_debug_mode(_config['debug'])
+        if _config['debug']:
+            self.log("Debug mode enabled from config")
 
         if 'start_immediate' in config_json:
             _config['start_immediate'] = bool(config_json['start_immediate'])

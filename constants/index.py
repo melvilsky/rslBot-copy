@@ -6,7 +6,9 @@ IS_DEV = False
 # Debug mode - включает отладку координат кликов и проверки цвета пикселей
 # Включает: сохранение скриншотов с отмеченными точками кликов, логирование координат, отладку цвета пикселей
 # DEBUG_MODE = True
-DEBUG_MODE = False
+# DEBUG_MODE = False
+# DEPRECATED: DEBUG_MODE is now managed dynamically via helpers.common.is_debug_mode()
+# and loaded from config.json
 
 # CLASSIC_ITEM_HEIGHT = 92
 # @TODO Test
