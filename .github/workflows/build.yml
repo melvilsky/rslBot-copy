@@ -194,7 +194,7 @@ jobs:
         $newVersion = "$major.$minor.$patch"
         
         Write-Host "New version: $newVersion"
-        Write-Host "version=$newVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "version=$newVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         
         # Обновляем version.json для сборки
         if (Test-Path "version.json") {
@@ -223,10 +223,10 @@ jobs:
         $tagName = "v${{ steps.get_version.outputs.version }}"
         $tagExists = git tag -l $tagName
         if ($tagExists -eq $tagName) {
-          Write-Host "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Tag $tagName already exists"
         } else {
-          Write-Host "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Tag $tagName does not exist"
         }
       shell: powershell
