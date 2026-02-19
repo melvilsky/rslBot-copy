@@ -84,10 +84,17 @@
     "description": "Чекбокс Quick Battle (на 20px выше Auto-Battle)"
   },
   "tap_to_continue": {
-    "x": 450,
-    "y": 450,
-    "rgb": [255, 255, 255],
-    "mistake": 15,
-    "description": "Надпись TAP TO CONTINUE на экране результата боя"
+    "x": 424,
+    "y": 494,
+    "rgb": [210, 190, 130],
+    "mistake": 35,
+    "description": "Надпись TAP TO CONTINUE (жёлто-золотистый текст) — только Arena Tag"
+  },
+  "return_to_arena": {
+    "x": 855,
+    "y": 200,
+    "rgb": [0, 0, 0],
+    "mistake": 30,
+    "description": "Кнопка RETURN TO ARENA после боя — только Arena Tag. RGB определить через дебаг"
   }
 }

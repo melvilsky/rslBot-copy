@@ -100,6 +100,7 @@ RGB_RED_DOT = _shared['red_dot_rgb']
 ATTACK_BUTTON_RGB = _shared['attack_button_rgb']
 quick_battle_coord = get_arena_coordinate(_shared, 'quick_battle')
 tap_to_continue_coord = get_arena_coordinate(_shared, 'tap_to_continue')
+return_to_arena_coord = get_arena_coordinate(_shared, 'return_to_arena')
 PAID_REFILL_LIMIT = 0
 OUTPUT_ITEMS_AMOUNT = 10
 
@@ -406,7 +407,7 @@ class ArenaFactory(Location):
 
                 if self.name == 'Arena Tag':
                     # Arena Tag: ожидаем TAP TO CONTINUE вместо battle_end
-                    _ttc_mistake = get_arena_mistake(_shared, 'tap_to_continue', 15)
+                    _ttc_mistake = get_arena_mistake(_shared, 'tap_to_continue', 35)
 
                     if is_debug_mode():
                         debug_click_coordinates(
@@ -432,6 +433,27 @@ class ArenaFactory(Location):
                     self.log(result_name)
 
                     click(tap_to_continue_coord[0], tap_to_continue_coord[1])
+                    sleep(2)
+
+                    # Arena Tag: ожидаем кнопку RETURN TO ARENA
+                    _rta_mistake = get_arena_mistake(_shared, 'return_to_arena', 30)
+
+                    if is_debug_mode():
+                        debug_click_coordinates(
+                            return_to_arena_coord[0], return_to_arena_coord[1],
+                            label="return_to_arena_CHECK_POINT",
+                            region=[0, 0, 920, 540],
+                            grid=True
+                        )
+
+                    E_RETURN_TO_ARENA = {
+                        "name": "ReturnToArena",
+                        "interval": 2,
+                        "expect": lambda: pixel_check_new(return_to_arena_coord, mistake=_rta_mistake, label="return_to_arena"),
+                    }
+                    self.awaits([E_RETURN_TO_ARENA, self.E_TERMINATE], interval=2)
+                    self.log('RETURN TO ARENA')
+                    click(return_to_arena_coord[0], return_to_arena_coord[1])
                     sleep(2)
                 else:
                     # Arena Classic: старая логика

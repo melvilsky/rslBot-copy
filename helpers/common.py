@@ -484,10 +484,16 @@ def debug_pixel_check_screenshot(x, y, expected_rgb, actual_rgb, match, label=No
         cv2.line(img_np, (rel_x, rel_y - 12), (rel_x, rel_y + 12), (0, 0, 255), 1)
 
         match_str = "OK" if match else "FAIL"
-        info = f"[{x},{y}] exp={expected_rgb} act={actual_rgb} {match_str}"
-        (tw, th), _ = cv2.getTextSize(info, font, 0.45, 1)
-        cv2.rectangle(img_np, (0, h - th - 10), (tw + 10, h), (0, 0, 0), -1)
-        cv2.putText(img_np, info, (5, h - 5), font, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+        diff = [abs(expected_rgb[i] - actual_rgb[i]) for i in range(min(len(expected_rgb), len(actual_rgb)))]
+        line1 = f"[{x},{y}] {match_str}  exp={expected_rgb}"
+        line2 = f"act={actual_rgb} diff={diff}"
+        fs = 0.35
+        (tw1, th1), _ = cv2.getTextSize(line1, font, fs, 1)
+        (tw2, th2), _ = cv2.getTextSize(line2, font, fs, 1)
+        bar_h = th1 + th2 + 14
+        cv2.rectangle(img_np, (0, h - bar_h), (max(tw1, tw2) + 10, h), (0, 0, 0), -1)
+        cv2.putText(img_np, line1, (4, h - th2 - 10), font, fs, (0, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(img_np, line2, (4, h - 4), font, fs, (0, 255, 255), 1, cv2.LINE_AA)
 
         output_debug = Path('debug/pixel_checks')
         folder_ensure(output_debug)
