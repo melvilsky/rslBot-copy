@@ -428,6 +428,83 @@ def debug_click_coordinates(x, y, label="click", region=None, grid=False):
         log(f"ERROR saving click debug screenshot: {e}")
 
 
+_pixel_check_screenshot_times = {}
+
+
+def debug_pixel_check_screenshot(x, y, expected_rgb, actual_rgb, match, label=None, margin=150):
+    """
+    Сохраняет скриншот области вокруг проверяемого пикселя с сеткой 10px
+    для визуального определения правильных координат.
+    """
+    try:
+        screen_width, screen_height = pyautogui.size()
+        left = max(0, x - margin)
+        top = max(0, y - margin)
+        right = min(screen_width, x + margin)
+        bottom = min(screen_height, y + margin)
+        region = [left, top, right - left, bottom - top]
+
+        screenshot = pyautogui.screenshot(region=region)
+        img_np = np.array(screenshot)
+        img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        h, w = img_np.shape[:2]
+
+        grid_color = (80, 80, 80)
+        grid_color_50 = (0, 200, 100)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        for gx_abs in range(left - (left % 10), right + 1, 10):
+            rx = gx_abs - left
+            if 0 <= rx < w:
+                color = grid_color_50 if gx_abs % 50 == 0 else grid_color
+                cv2.line(img_np, (rx, 0), (rx, h), color, 1)
+
+        for gy_abs in range(top - (top % 10), bottom + 1, 10):
+            ry = gy_abs - top
+            if 0 <= ry < h:
+                color = grid_color_50 if gy_abs % 50 == 0 else grid_color
+                cv2.line(img_np, (0, ry), (w, ry), color, 1)
+
+        for gy_abs in range(left - (left % 50), right + 1, 50):
+            rx = gy_abs - left
+            if 0 <= rx < w:
+                txt = str(gy_abs)
+                cv2.putText(img_np, txt, (rx + 2, 12), font, 0.35, (0, 255, 200), 1, cv2.LINE_AA)
+        for gy_abs in range(top - (top % 50), bottom + 1, 50):
+            ry = gy_abs - top
+            if 0 <= ry < h:
+                txt = str(gy_abs)
+                cv2.putText(img_np, txt, (2, ry - 3), font, 0.35, (0, 255, 200), 1, cv2.LINE_AA)
+
+        rel_x = x - left
+        rel_y = y - top
+        cv2.circle(img_np, (rel_x, rel_y), 8, (0, 0, 255), 2)
+        cv2.circle(img_np, (rel_x, rel_y), 1, (0, 0, 255), -1)
+        cv2.line(img_np, (rel_x - 12, rel_y), (rel_x + 12, rel_y), (0, 0, 255), 1)
+        cv2.line(img_np, (rel_x, rel_y - 12), (rel_x, rel_y + 12), (0, 0, 255), 1)
+
+        match_str = "OK" if match else "FAIL"
+        info = f"[{x},{y}] exp={expected_rgb} act={actual_rgb} {match_str}"
+        (tw, th), _ = cv2.getTextSize(info, font, 0.45, 1)
+        cv2.rectangle(img_np, (0, h - th - 10), (tw + 10, h), (0, 0, 0), -1)
+        cv2.putText(img_np, info, (5, h - 5), font, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+
+        output_debug = Path('debug/pixel_checks')
+        folder_ensure(output_debug)
+        time_str = get_time_for_log(s='-')
+        tag = label or "check"
+        file_name = f"{time_str}-{tag}-[{x}-{y}]-{match_str}.jpg"
+        file_path = output_debug / file_name
+
+        img_rgb = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
+        img_pil = Image.fromarray(img_rgb)
+        img_pil.save(str(file_path), quality=95)
+
+        log(f"DEBUG: Pixel check screenshot saved: {file_path}")
+    except Exception as e:
+        log(f"ERROR saving pixel check debug screenshot: {e}")
+
+
 def pixel_check_new(pixel, mistake=10, label=None):
     x = pixel[0]
     y = pixel[1]
@@ -440,6 +517,13 @@ def pixel_check_new(pixel, mistake=10, label=None):
         diff = [abs(actual_rgb[i] - rgb[i]) for i in range(3)]
         tag = f" ({label})" if label else ""
         log(f"DEBUG pixel_check{tag}: [{x}, {y}] expected={rgb} actual={actual_rgb} diff={diff} mistake={mistake} match={result}")
+
+        throttle_key = label or f"{x}_{y}"
+        now = time.time()
+        last = _pixel_check_screenshot_times.get(throttle_key, 0)
+        if now - last >= 2.0:
+            _pixel_check_screenshot_times[throttle_key] = now
+            debug_pixel_check_screenshot(x, y, rgb, actual_rgb, result, label=label)
 
     return result
 
