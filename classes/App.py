@@ -796,6 +796,7 @@ class App(Foundation):
         # Экранные координаты: контент окна = window.left + BORDER_WIDTH, window.top + BORDER_TOP
         base_x = self.window.left + BORDER_WIDTH
         base_y = self.window.top + WINDOW_TOP_BAR_HEIGHT + BORDER_WIDTH
+        sleep(PLAYER_ID_DELAY_BEFORE_FIRST)
         for coord, (dx, dy) in enumerate([
             PLAYER_ID_CLICK_1,
             PLAYER_ID_CLICK_2,
@@ -803,7 +804,8 @@ class App(Foundation):
         ], 1):
             x, y = base_x + dx, base_y + dy
             click(x, y)
-            sleep(0.4)
+            delay = PLAYER_ID_DELAY_BETWEEN_CLICKS if coord < 3 else PLAYER_ID_DELAY_AFTER_COPY
+            sleep(delay)
         pyautogui.press('escape')
         sleep(0.3)
         if not self._verify_player_id_window_closed():

@@ -26,6 +26,10 @@ WINDOW_SIZE = [920, 540]
 PLAYER_ID_CLICK_1 = (44, 73)
 PLAYER_ID_CLICK_2 = (89, 345)
 PLAYER_ID_CLICK_3 = (771, 152)
+# Задержки (сек): после открытия меню, между кликами, после копирования перед ESC
+PLAYER_ID_DELAY_BEFORE_FIRST = 0.4
+PLAYER_ID_DELAY_BETWEEN_CLICKS = 0.7
+PLAYER_ID_DELAY_AFTER_COPY = 0.5
 
 
 def get_config_path():
