@@ -75,5 +75,19 @@
     "y": 350,
     "distance": 400,
     "description": "Свайп вправо для просмотра наград"
+  },
+  "quick_battle": {
+    "x": 710,
+    "y": 386,
+    "rgb": [13, 58, 81],
+    "mistake": 10,
+    "description": "Чекбокс Quick Battle (на 20px выше Auto-Battle)"
+  },
+  "tap_to_continue": {
+    "x": 450,
+    "y": 470,
+    "rgb": [255, 255, 255],
+    "mistake": 15,
+    "description": "Надпись TAP TO CONTINUE на экране результата боя"
   }
 }

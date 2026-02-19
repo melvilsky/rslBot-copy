@@ -68,6 +68,20 @@ _shared = load_arena_coordinates('arena_shared.json')
 _tag_data = load_arena_coordinates('arena_tag.json')
 _classic_data = load_arena_coordinates('arena_classic.json')
 
+# Проверка наличия обязательных JSON (без них арена неработоспособна)
+_missing = []
+if _shared is None:
+    _missing.append('coordinates/arena_shared.json')
+if _tag_data is None:
+    _missing.append('coordinates/arena_tag.json')
+if _classic_data is None:
+    _missing.append('coordinates/arena_classic.json')
+if _missing:
+    raise RuntimeError(
+        'Не найдены файлы координат арены: {}. '
+        'Скопируйте их из репозитория или восстановите.'.format(', '.join(_missing))
+    )
+
 # Общие координаты ArenaFactory (из arena_shared.json)
 button_refresh = get_arena_coordinate(_shared, 'button_refresh')
 refill_free = get_arena_coordinate(_shared, 'refill_free')
@@ -84,6 +98,8 @@ swipe_reward_coord = _shared['swipe_reward']
 
 RGB_RED_DOT = _shared['red_dot_rgb']
 ATTACK_BUTTON_RGB = _shared['attack_button_rgb']
+quick_battle_coord = get_arena_coordinate(_shared, 'quick_battle')
+tap_to_continue_coord = get_arena_coordinate(_shared, 'tap_to_continue')
 PAID_REFILL_LIMIT = 0
 OUTPUT_ITEMS_AMOUNT = 10
 
@@ -357,7 +373,9 @@ class ArenaFactory(Location):
 
             # checking - is an enemy already attacked
             is_not_attacked = len(results_local) - 1 < i
-            if pixel_check_new([x, y, ATTACK_BUTTON_RGB]) and is_not_attacked:
+            if is_debug_mode():
+                debug_save_screenshot(suffix_name=f"arena-before-attack-pos{position}-i{i}")
+            if pixel_check_new([x, y, ATTACK_BUTTON_RGB], label=f"attack_button_pos{position}") and is_not_attacked:
                 self.log(self.name + ' | Attack')
                 click_on_battle()
 
@@ -365,9 +383,16 @@ class ArenaFactory(Location):
                     self.log('Terminated')
                     break
 
-                # Enables AutoPlay if it's disabled
-                enable_start_on_auto()
+                # Quick Battle / AutoPlay
+                if self.name == 'Arena Tag':
+                    self.log('Function: enable_quick_battle')
+                    _qb_mistake = get_arena_mistake(_shared, 'quick_battle', 10)
+                    await_click([quick_battle_coord], mistake=_qb_mistake, wait_limit=1)
+                else:
+                    enable_start_on_auto()
 
+                if is_debug_mode():
+                    debug_save_screenshot(suffix_name=f"arena-before-start-i{i}")
                 click_on_start()
 
                 # Проверка докупки после нажатия confirm (Start)
@@ -379,42 +404,61 @@ class ArenaFactory(Location):
                     self.log('Terminated')
                     break
 
-                self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
-                res = not pixel_check_new(defeat, 20)
-                results_local.append(res)
-                result_name = 'VICTORY' if res else 'DEFEAT'
-                self.log(result_name)
+                if self.name == 'Arena Tag':
+                    # Arena Tag: ожидаем TAP TO CONTINUE вместо battle_end
+                    _ttc_mistake = get_arena_mistake(_shared, 'tap_to_continue', 15)
+                    E_TAP_TO_CONTINUE = {
+                        "name": "TapToContinue",
+                        "interval": 2,
+                        "expect": lambda: pixel_check_new(tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue"),
+                    }
+                    self.awaits([E_TAP_TO_CONTINUE, self.E_TERMINATE], interval=2)
 
-                # Увеличенные таймауты для закрытия экрана победы/поражения
-                tap_to_continue(times=2, wait_after=3)
-                sleep(2)
-                
-                # Проверка, что экран победы/поражения закрылся
-                # Ждем исчезновения defeat пикселя (максимум 7 секунд)
-                max_wait_time = 7
-                check_interval = 0.5
-                waited = 0
-                while pixel_check_new(defeat, 20) and waited < max_wait_time:
-                    sleep(check_interval)
-                    waited += check_interval
-                
-                if pixel_check_new(defeat, 20):
-                    # Если экран победы все еще виден, повторяем tap_to_continue
-                    self.log('Victory/defeat screen still visible, retrying tap_to_continue')
+                    if is_debug_mode():
+                        debug_save_screenshot(suffix_name=f"arena-tag-tap-to-continue-i{i}")
+
+                    res = not pixel_check_new(defeat, 20, label="defeat_check")
+                    results_local.append(res)
+                    result_name = 'VICTORY' if res else 'DEFEAT'
+                    self.log(result_name)
+
+                    click(tap_to_continue_coord[0], tap_to_continue_coord[1])
+                    sleep(2)
+                else:
+                    # Arena Classic: старая логика
+                    self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
+                    if is_debug_mode():
+                        debug_save_screenshot(suffix_name=f"arena-battle-result-i{i}")
+                    res = not pixel_check_new(defeat, 20, label="defeat_check")
+                    results_local.append(res)
+                    result_name = 'VICTORY' if res else 'DEFEAT'
+                    self.log(result_name)
+
                     tap_to_continue(times=2, wait_after=3)
                     sleep(2)
-                    
-                    # Повторная проверка
+
+                    max_wait_time = 7
+                    check_interval = 0.5
                     waited = 0
                     while pixel_check_new(defeat, 20) and waited < max_wait_time:
                         sleep(check_interval)
                         waited += check_interval
-                
-                if not pixel_check_new(defeat, 20):
-                    self.log('Victory/defeat screen closed successfully')
-                else:
-                    self.log('Warning: Victory/defeat screen may still be visible')
-                
+
+                    if pixel_check_new(defeat, 20):
+                        self.log('Victory/defeat screen still visible, retrying tap_to_continue')
+                        tap_to_continue(times=2, wait_after=3)
+                        sleep(2)
+
+                        waited = 0
+                        while pixel_check_new(defeat, 20) and waited < max_wait_time:
+                            sleep(check_interval)
+                            waited += check_interval
+
+                    if not pixel_check_new(defeat, 20):
+                        self.log('Victory/defeat screen closed successfully')
+                    else:
+                        self.log('Warning: Victory/defeat screen may still be visible')
+
                 # tells to skip several teams by swiping
                 should_use_multi_swipe = True
 

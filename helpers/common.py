@@ -418,12 +418,20 @@ def debug_click_coordinates(x, y, label="click", region=None):
         log(f"ERROR saving click debug screenshot: {e}")
 
 
-def pixel_check_new(pixel, mistake=10):
+def pixel_check_new(pixel, mistake=10, label=None):
     x = pixel[0]
     y = pixel[1]
     rgb = pixel[2]
     p = pyautogui.pixel(x, y)
-    return rgb_check(p, rgb, mistake=mistake)
+    result = rgb_check(p, rgb, mistake=mistake)
+
+    if is_debug_mode():
+        actual_rgb = [p[0], p[1], p[2]]
+        diff = [abs(actual_rgb[i] - rgb[i]) for i in range(3)]
+        tag = f" ({label})" if label else ""
+        log(f"DEBUG pixel_check{tag}: [{x}, {y}] expected={rgb} actual={actual_rgb} diff={diff} mistake={mistake} match={result}")
+
+    return result
 
 
 def rgb_check(rgb_1, rgb_2, mistake=0):
@@ -459,6 +467,10 @@ def pixels_wait(pixels, msg=None, timeout=5, mistake=0, wait_limit=None, debug=F
     if msg is not None:
         log(f"Waiting {pixels_str}: {msg}")
 
+    if is_debug_mode():
+        for idx, px in enumerate(pixels):
+            log(f"DEBUG pixels_wait: pixel[{idx}] = [{px[0]}, {px[1]}, {px[2]}] mistake={mistake}")
+
     def restart():
         res = []
         for i in range(len(pixels)):
@@ -478,8 +490,16 @@ def pixels_wait(pixels, msg=None, timeout=5, mistake=0, wait_limit=None, debug=F
         log(str(counter) + ' seconds left')
         sleep(timeout)
 
+    if is_debug_mode():
+        found_indices = [i for i, v in enumerate(checked_pixels) if v]
+        _tag = f" ({msg})" if msg else ""
+        if found_indices:
+            log(f"DEBUG pixels_wait{_tag}: found pixel(s) at index {found_indices}")
+        else:
+            log(f"DEBUG pixels_wait{_tag}: TIMEOUT, no pixel matched after {counter}s")
+        debug_save_screenshot(suffix_name=f"pixels_wait-{msg or 'unnamed'}")
+
     if debug and has_wait_limit and counter >= wait_limit:
-        # debug
         debug_save_screenshot(suffix_name=msg)
 
     return checked_pixels
@@ -491,8 +511,13 @@ def pixels_wait_every():
 
 
 def await_click(pixels, msg=None, timeout=5, mistake=0, wait_limit=None, smart=False):
+    if is_debug_mode():
+        _tag = f" ({msg})" if msg else ""
+        log(f"DEBUG await_click{_tag}: waiting for {len(pixels)} pixel(s)")
+
     res = pixels_wait(pixels, msg=msg, timeout=timeout, mistake=mistake, wait_limit=wait_limit)
 
+    clicked = False
     for i in range(len(res)):
         el = res[i]
         if el:
@@ -500,10 +525,16 @@ def await_click(pixels, msg=None, timeout=5, mistake=0, wait_limit=None, smart=F
             x = pixel[0]
             y = pixel[1]
 
+            if is_debug_mode():
+                log(f"DEBUG await_click{_tag}: clicking [{x}, {y}]")
+
             click(x, y, smart=smart)
             time.sleep(.3)
-
+            clicked = True
             break
+
+    if is_debug_mode() and not clicked:
+        log(f"DEBUG await_click{_tag}: no matching pixel found, no click performed")
 
     return res
 
@@ -811,15 +842,11 @@ def show_image(path=None, image=None, title='Image'):
 
     if path:
         image = cv2.imread(path)
-    
+
     if image is not None:
         cv2.imwrite(str(output_debug / file_name), image)
         log(f"Debug image saved: {output_debug / file_name}")
-
-    cv2.imshow(title, image)
-    cv2.moveWindow(title, 1000, 1000)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+        # Не вызываем cv2.imshow/waitKey — только сохранение в файл, чтобы не блокировать автозапуск
 
 
 def click_on_progress_info(delay=0.5):

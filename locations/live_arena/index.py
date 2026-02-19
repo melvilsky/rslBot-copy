@@ -5,6 +5,7 @@ import os
 import json
 from PIL import Image, ImageDraw
 
+from helpers.common import is_debug_mode
 from helpers.time_mgr import *
 from helpers.refill_state import get_remaining_refills, increment_purchase
 from locations.hero_filter.index import *
@@ -420,13 +421,11 @@ class ArenaLive(Location):
 
     def _click_on_find_opponent(self):
         # Отладочный вывод: проверяем цвет пикселя перед ожиданием
-        from constants.index import DEBUG_MODE
-        
         x = find_opponent[0]
         y = find_opponent[1]
         expected_rgb = find_opponent[2]
         
-        if DEBUG_MODE:
+        if is_debug_mode():
             try:
                 actual_pixel = pyautogui.pixel(x, y)
                 actual_rgb = [actual_pixel[0], actual_pixel[1], actual_pixel[2]]
@@ -448,7 +447,7 @@ class ArenaLive(Location):
         
         if not await_click([find_opponent], msg="Click on find opponent", mistake=20, wait_limit=65)[0]:
             # Если не нашли, еще раз проверим цвет для отладки
-            if DEBUG_MODE:
+            if is_debug_mode():
                 self.log("Failed to find opponent button. Checking pixel color again...")
                 try:
                     actual_pixel = pyautogui.pixel(x, y)
