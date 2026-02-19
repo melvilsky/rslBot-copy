@@ -152,7 +152,7 @@ jobs:
         $githubRepo = "${{ github.repository }}"
         $token = "${{ secrets.GITHUB_TOKEN }}"
         
-        # Пытаемся получить последний релиз через API
+        # Получаем последний релиз
         try {
           $headers = @{
             "Authorization" = "Bearer $token"
@@ -160,55 +160,93 @@ jobs:
           }
           $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubRepo/releases/latest" -Headers $headers -ErrorAction Stop
           $latestTag = $response.tag_name
-          Write-Host "Latest release tag: $latestTag"
-          
-          # Убираем префикс 'v' если есть
           $latestVersion = $latestTag -replace '^v', ''
-          Write-Host "Latest version: $latestVersion"
+          Write-Host "Latest release: $latestVersion"
         } catch {
-          Write-Host "No releases found, using version from version.json or default"
           $latestVersion = $null
         }
         
-        # Если нет релизов, используем версию из version.json
         if (-not $latestVersion -and (Test-Path "version.json")) {
           $versionData = Get-Content "version.json" | ConvertFrom-Json
           $latestVersion = $versionData.version
-          Write-Host "Using version from version.json: $latestVersion"
         }
+        if (-not $latestVersion) { $latestVersion = "1.0.0" }
         
-        # Если все еще нет версии, используем дефолтную
-        if (-not $latestVersion) {
-          $latestVersion = "1.0.0"
-          Write-Host "Using default version: $latestVersion"
-        }
-        
-        # Разбиваем версию на части (MAJOR.MINOR.PATCH)
         $versionParts = $latestVersion -split '\.'
         $major = [int]$versionParts[0]
         $minor = [int]$versionParts[1]
         $patch = [int]$versionParts[2]
         
-        # Инкрементируем patch версию
-        $patch++
-        $newVersion = "$major.$minor.$patch"
+        # Определяем тип инкремента из коммит-сообщения
+        # #major → MAJOR, #minor → MINOR, иначе → PATCH
+        $commitMsg = "${{ github.event.head_commit.message }}"
+        if ($commitMsg -match '#major') {
+          $major++; $minor = 0; $patch = 0
+          Write-Host "MAJOR bump triggered by #major"
+        } elseif ($commitMsg -match '#minor') {
+          $minor++; $patch = 0
+          Write-Host "MINOR bump triggered by #minor"
+        } else {
+          $patch++
+          Write-Host "PATCH bump (default)"
+        }
         
+        $newVersion = "$major.$minor.$patch"
         Write-Host "New version: $newVersion"
         "version=$newVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         
-        # Обновляем version.json для сборки
+        # Обновляем version.json
         if (Test-Path "version.json") {
           $versionData = Get-Content "version.json" | ConvertFrom-Json
         } else {
           $versionData = @{} | ConvertTo-Json | ConvertFrom-Json
         }
-        
         $versionData.version = $newVersion
         $versionData.build_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
         $versionData.download_url = "https://github.com/$githubRepo/releases/download/v$newVersion/RaidSL-Telegram-Bot.zip"
-        
         $versionData | ConvertTo-Json -Depth 10 | Set-Content "version.json" -Encoding UTF8
-        Write-Host "Updated version.json with version $newVersion"
+      shell: powershell
+    
+    - name: Generate release notes from commits
+      id: release_notes
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      run: |
+        $token = "${{ secrets.GITHUB_TOKEN }}"
+        $githubRepo = "${{ github.repository }}"
+        $headers = @{
+          "Authorization" = "Bearer $token"
+          "Accept" = "application/vnd.github.v3+json"
+        }
+        
+        # Находим тег предыдущего релиза
+        $prevTag = ""
+        try {
+          $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubRepo/releases/latest" -Headers $headers -ErrorAction Stop
+          $prevTag = $response.tag_name
+        } catch {}
+        
+        # Собираем коммиты с прошлого релиза
+        if ($prevTag) {
+          $log = git log "$prevTag..HEAD" --pretty=format:"- %s" --no-merges 2>$null
+        } else {
+          $log = git log -10 --pretty=format:"- %s" --no-merges 2>$null
+        }
+        
+        if (-not $log) { $log = "- Обновление" }
+        
+        $notes = "## Что нового в v${{ steps.get_version.outputs.version }}`n`n"
+        $notes += ($log -join "`n")
+        $notes += "`n`n### Установка`n"
+        $notes += "1. Скачайте ``RaidSL-Telegram-Bot.zip```n"
+        $notes += "2. Распакуйте в папку с приложением`n"
+        $notes += "3. Запустите ``RaidSL-Telegram-Bot.exe```n`n"
+        $notes += "### Обновление`n"
+        $notes += "``/update`` в Telegram боте или распакуйте архив поверх существующей установки"
+        
+        # Сохраняем в файл чтобы не терять переносы строк
+        $notes | Out-File -FilePath "release_notes.md" -Encoding utf8
+        Write-Host "Release notes generated"
+        Write-Host $notes
       shell: powershell
     
     - name: Fetch tags
@@ -216,73 +254,14 @@ jobs:
       run: git fetch --tags
       shell: powershell
     
-    - name: Check if tag exists
-      id: check_tag
-      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-      run: |
-        $tagName = "v${{ steps.get_version.outputs.version }}"
-        $tagExists = git tag -l $tagName
-        if ($tagExists -eq $tagName) {
-          "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          Write-Host "Tag $tagName already exists"
-        } else {
-          "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          Write-Host "Tag $tagName does not exist"
-        }
-      shell: powershell
-    
     - name: Create Release (main/master only)
-      if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && steps.check_tag.outputs.exists == 'false'
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       uses: softprops/action-gh-release@v1
       with:
         files: dist/RaidSL-Telegram-Bot.zip
         tag_name: v${{ steps.get_version.outputs.version }}
-        name: Release ${{ steps.get_version.outputs.version }}
-        body: |
-          ## Версия ${{ steps.get_version.outputs.version }}
-          
-          Автоматический релиз создан из ветки ${{ github.ref_name }}
-          
-          Commit: ${{ github.sha }}
-          
-          ### Установка
-          1. Скачайте архив `RaidSL-Telegram-Bot.zip`
-          2. Распакуйте в папку с приложением
-          3. Запустите `RaidSL-Telegram-Bot.exe`
-          
-          ### Обновление
-          Если у вас уже установлена предыдущая версия:
-          - Используйте команду `/update` в Telegram боте для автоматического обновления
-          - Или распакуйте архив поверх существующей установки (ваш `config.json` не будет затронут)
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Update existing release (if tag exists)
-      if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && steps.check_tag.outputs.exists == 'true'
-      uses: softprops/action-gh-release@v1
-      with:
-        files: dist/RaidSL-Telegram-Bot.zip
-        tag_name: v${{ steps.get_version.outputs.version }}
-        name: Release ${{ steps.get_version.outputs.version }} (Updated)
-        body: |
-          ## Версия ${{ steps.get_version.outputs.version }} (Обновлено)
-          
-          Автоматическое обновление релиза из ветки ${{ github.ref_name }}
-          
-          Commit: ${{ github.sha }}
-          
-          ### Установка
-          1. Скачайте архив `RaidSL-Telegram-Bot.zip`
-          2. Распакуйте в папку с приложением
-          3. Запустите `RaidSL-Telegram-Bot.exe`
-          
-          ### Обновление
-          Если у вас уже установлена предыдущая версия:
-          - Используйте команду `/update` в Telegram боте для автоматического обновления
-          - Или распакуйте архив поверх существующей установки (ваш `config.json` не будет затронут)
+        name: v${{ steps.get_version.outputs.version }}
+        body_path: release_notes.md
         draft: false
         prerelease: false
       env:
