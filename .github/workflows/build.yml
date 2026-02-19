@@ -199,22 +199,38 @@ jobs:
     - name: Generate release notes from commits
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       run: |
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $OutputEncoding = [System.Text.Encoding]::UTF8
         $token = "${{ secrets.GITHUB_TOKEN }}"
         $githubRepo = "${{ github.repository }}"
-        $headers = @{ "Authorization" = "Bearer $token"; "Accept" = "application/vnd.github.v3+json" }
+        $sha = "${{ github.sha }}"
+        $headers = @{ "Authorization" = "Bearer $token"; "Accept" = "application/vnd.github.v3+json"; "Content-Type" = "application/json; charset=utf-8" }
         $prevTag = ""
         try {
           $r = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubRepo/releases/latest" -Headers $headers -ErrorAction Stop
           $prevTag = $r.tag_name
         } catch {}
+        $logLines = @()
         if ($prevTag) {
-          $log = git log "$prevTag..HEAD" --pretty=format:"- %s" --no-merges 2>$null
-        } else {
-          $log = git log -10 --pretty=format:"- %s" --no-merges 2>$null
+          $compare = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubRepo/compare/$prevTag...$sha" -Headers $headers -ErrorAction SilentlyContinue
+          if ($compare.commits) {
+            foreach ($c in $compare.commits) {
+              $msg = $c.commit.message -replace "(\r?\n).*", ""
+              $logLines += "- $msg"
+            }
+          }
         }
-        if (-not $log) { $log = "- Обновление" }
-        $notes = "## Что нового в v${{ steps.get_version.outputs.version }}`n`n" + ($log -join "`n")
-        $notes += "`n`n### Установка`n1. Скачайте RaidSL-Telegram-Bot.zip`n2. Распакуйте в папку с приложением`n3. Запустите RaidSL-Telegram-Bot.exe`n`n### Обновление`n/update в Telegram боте или распакуйте архив поверх установки"
+        if (-not $logLines.Count) {
+          $commit = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubRepo/commits/$sha" -Headers $headers -ErrorAction SilentlyContinue
+          if ($commit.commit.message) {
+            $msg = $commit.commit.message -replace "(\r?\n).*", ""
+            $logLines += "- $msg"
+          }
+        }
+        if (-not $logLines.Count) { $logLines += "- Update" }
+        $logStr = $logLines -join "`n"
+        $notes = "## What's new in v${{ steps.get_version.outputs.version }}`n`n" + $logStr
+        $notes += "`n`n### Installation`n1. Download RaidSL-Telegram-Bot.zip`n2. Extract to application folder`n3. Run RaidSL-Telegram-Bot.exe`n`n### Update`n/update in Telegram bot or extract archive over existing installation"
         $utf8NoBom = New-Object System.Text.UTF8Encoding $false
         [System.IO.File]::WriteAllText("$PWD/release_notes.md", $notes, $utf8NoBom)
       shell: powershell
