@@ -3,7 +3,10 @@ from helpers.updater import is_update_available, should_check_for_updates, launc
 from classes.TaskManager import TaskManager
 from classes.Storage import Storage
 from classes.Foundation import *
-from classes.Recorder import Recorder
+try:
+    from classes.Recorder import Recorder
+except ImportError:
+    Recorder = None
 from telegram.error import BadRequest
 from locations.rewards.index import *
 # from locations.live_arena.index_old import *
@@ -197,7 +200,7 @@ def make_title(input_string):
 
 class App(Foundation):
     COMMANDS_GAME_PATH_DEPENDANT = ['restart', 'launch', 'relogin', 'prepare']
-    COMMANDS_COMMON = ['report', 'screen', 'click', 'stop']
+    COMMANDS_COMMON = ['report', 'screen', 'click', 'stop', 'record_on', 'record_off']
 
     def __init__(self):
         Foundation.__init__(self, name='App')
@@ -213,7 +216,7 @@ class App(Foundation):
         self.translations = None
         self.scheduler = None
         self.telegram_bot = None  # Будет установлен из main.py
-        self.recorder = Recorder()
+        self.recorder = Recorder() if Recorder else None
 
         # @TODO Temp commented
         # self.storage = Storage(name='storage', folder='temp')
@@ -309,11 +312,15 @@ class App(Foundation):
             },
             'record_on': {
                 'description': 'Start recording clicks',
-                'handler': lambda upd, ctx: upd.message.reply_text(self.recorder.start()),
+                'handler': lambda upd, ctx: upd.message.reply_text(
+                    self.recorder.start() if self.recorder else "Recorder unavailable (pynput not installed)"
+                ),
             },
             'record_off': {
                 'description': 'Stop recording and show results',
-                'handler': lambda upd, ctx: upd.message.reply_text(self.recorder.stop()),
+                'handler': lambda upd, ctx: upd.message.reply_text(
+                    self.recorder.stop() if self.recorder else "Recorder unavailable (pynput not installed)"
+                ),
             },
         }
 
