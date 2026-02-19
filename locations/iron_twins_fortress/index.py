@@ -1,7 +1,57 @@
+import os
+import json
+
 from helpers.common import *
 from classes.Location import Location
 
 TWIN_KEYS_LIMIT = 6
+
+
+def load_iron_twins_coordinates():
+    """Загружает координаты из файла coordinates/iron_twins.json"""
+    try:
+        coords_path = os.path.join('coordinates', 'iron_twins.json')
+        if os.path.exists(coords_path):
+            with open(coords_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return None
+    except Exception as e:
+        print(f"Ошибка загрузки координат из coordinates/iron_twins.json: {e}")
+        return None
+
+
+def get_iron_twins_coordinate(data, key):
+    """
+    Получает координату из загруженного JSON.
+    Returns: [x, y, [r, g, b]] если есть rgb, иначе [x, y]
+    Raises: ValueError если ключ не найден
+    """
+    if not data or key not in data:
+        raise ValueError(f"Coordinate '{key}' not found in coordinates/iron_twins.json")
+    coord = data[key]
+    if 'rgb' in coord:
+        return [coord['x'], coord['y'], coord['rgb']]
+    return [coord['x'], coord['y']]
+
+
+def get_iron_twins_mistake(data, key, default=20):
+    """Получает значение mistake (погрешность) из JSON"""
+    if data and key in data:
+        coord = data[key]
+        if isinstance(coord, dict):
+            return coord.get('mistake', default)
+    return default
+
+
+_coordinates_data = load_iron_twins_coordinates()
+if _coordinates_data is None:
+    raise RuntimeError(
+        'Не найден файл coordinates/iron_twins.json. '
+        'Скопируйте его из репозитория или восстановите.'
+    )
+
+super_raids_coord = get_iron_twins_coordinate(_coordinates_data, 'super_raids')
+super_raids_mistake = get_iron_twins_mistake(_coordinates_data, 'super_raids', 10)
 
 # @TODO Refactor is needed
 class IronTwins(Location):
@@ -12,6 +62,8 @@ class IronTwins(Location):
 
         self.results = []
         self.keys = TWIN_KEYS_LIMIT
+        self.super_raids_coord = super_raids_coord
+        self.super_raids_mistake = super_raids_mistake
 
         self._apply_props(props=props)
 
@@ -41,6 +93,51 @@ class IronTwins(Location):
         # Enter the stage
         click(830, 460)
         sleep(.5)
+        self._ensure_super_raids_enabled()
+
+    def _ensure_super_raids_enabled(self):
+        x = self.super_raids_coord[0]
+        y = self.super_raids_coord[1]
+
+        if is_debug_mode():
+            debug_click_coordinates(
+                x,
+                y,
+                label="iron_twins_super_raids_CHECK_POINT",
+                region=[0, 0, 920, 540],
+                grid=True
+            )
+            debug_save_screenshot(suffix_name="iron-twins-super-raids-before-check")
+
+        enabled = pixel_check_new(
+            self.super_raids_coord,
+            mistake=self.super_raids_mistake,
+            label="iron_twins_super_raids"
+        )
+        if enabled:
+            self.log("SUPER RAIDS already enabled")
+            return True
+
+        self.log("SUPER RAIDS disabled, trying to enable")
+        pyautogui.moveTo(x, y, .5, random_easying())
+        sleep(.2)
+        click(x, y)
+        sleep(.5)
+
+        if is_debug_mode():
+            debug_save_screenshot(suffix_name="iron-twins-super-raids-after-click")
+
+        enabled_after_click = pixel_check_new(
+            self.super_raids_coord,
+            mistake=self.super_raids_mistake,
+            label="iron_twins_super_raids_after_click"
+        )
+        if enabled_after_click:
+            self.log("SUPER RAIDS enabled successfully")
+        else:
+            self.log("WARNING: failed to enable SUPER RAIDS")
+
+        return enabled_after_click
 
     def _run(self, props=None):
         self._apply_props(props=props)

@@ -1,0 +1,13 @@
+{
+  "super_raids": {
+    "x": 654,
+    "y": 336,
+    "rgb": [
+      108,
+      237,
+      255
+    ],
+    "mistake": 10,
+    "description": "Переключатель SUPER RAIDS в Iron Twins"
+  }
+}
