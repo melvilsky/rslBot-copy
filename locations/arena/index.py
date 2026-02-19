@@ -137,12 +137,32 @@ def callback_refresh(*args):
     sleep(2)
 
 
+# Таймаут ожидания кнопки Refresh (сек); при превышении — выход без бесконечного ожидания
+ARENA_REFRESH_WAIT_LIMIT = 120
+# Таймаут ожидания TAP TO CONTINUE / RETURN TO ARENA в Arena Tag (сек)
+ARENA_TAG_AWAIT_LIMIT = 120
+
+
 class ArenaFactory(Location):
     E_BUTTON_REFRESH = {
         "name": "Refresh button",
         "expect": lambda: pixel_check_new(button_refresh, mistake=5),
         "callback": callback_refresh,
         "interval": 5,
+    }
+    E_REFRESH_TIMEOUT = {
+        "name": "RefreshTimeout",
+        "delay": ARENA_REFRESH_WAIT_LIMIT,
+        "interval": 1,
+        "expect": lambda: True,
+        "blocking": True,
+    }
+    E_TAG_AWAIT_TIMEOUT = {
+        "name": "TagAwaitTimeout",
+        "delay": ARENA_TAG_AWAIT_LIMIT,
+        "interval": 1,
+        "expect": lambda: True,
+        "blocking": True,
     }
 
     name = None
@@ -269,7 +289,10 @@ class ArenaFactory(Location):
             click(_x, _y)
             self._refill()
 
-        self.awaits([self.E_BUTTON_REFRESH, self.E_TERMINATE])
+        response = self.awaits([self.E_BUTTON_REFRESH, self.E_TERMINATE, self.E_REFRESH_TIMEOUT])
+        if response and response.get('name') == 'RefreshTimeout':
+            self.log(f'Refresh button wait timeout ({ARENA_REFRESH_WAIT_LIMIT}s), stopping')
+            self.terminated = True
 
     def _refill(self):
         refilled = False
@@ -337,22 +360,30 @@ class ArenaFactory(Location):
     def attack(self):
         results_local = []
         should_use_multi_swipe = False
-        swipes_done = [0]  # текущее состояние скролла (список не сбрасывается после RETURN TO ARENA)
+        swipes_done = [0]  # текущее состояние скролла (для Arena Tag список не сбрасывается после RETURN TO ARENA)
+        is_tag = (self.name == 'Arena Tag')
 
         _sa = swipe_attack_coord
 
         def inner_swipe(swipes_amount):
-            if should_use_multi_swipe:
-                # список не сбрасывается после боя — делаем только дельту свайпов
-                delta = swipes_amount - swipes_done[0]
-                for _ in range(delta):
+            if is_tag:
+                if should_use_multi_swipe:
+                    # Arena Tag: список не сбрасывается после боя — делаем только дельту свайпов
+                    delta = swipes_amount - swipes_done[0]
+                    for _ in range(delta):
+                        sleep(1)
+                        swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
+                    swipes_done[0] = swipes_amount
+                elif 0 < i <= self.max_swipe:
+                    # Arena Tag: первый проход по списку — по одному свайпу на шаг
+                    swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
+                    swipes_done[0] = swipes_amount
+            else:
+                # Arena Classic: после боя список возвращается в начало,
+                # поэтому всегда делаем ровно swipes свайпов от вершины
+                for _ in range(swipes_amount):
                     sleep(1)
                     swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
-                swipes_done[0] = swipes_amount
-            elif 0 < i <= self.max_swipe:
-                # первый проход по списку: по одному свайпу на шаг
-                swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
-                swipes_done[0] = swipes_amount
 
         for i in range(len(self.item_locations)):
             if self.terminated:
@@ -362,11 +393,12 @@ class ArenaFactory(Location):
             swipes = el['swipes']
             position = el['position']
             if i == 0:
-                swipes_done[0] = 0  # сброс при новом проходе по списку (после рефреша)
+                swipes_done[0] = 0  # сброс при новом проходе по списку (после рефреша) для Arena Tag
 
-            # После RETURN TO ARENA синхронизируемся с экраном: если следующий противник уже виден — не скроллим
+            # Arena Tag: после RETURN TO ARENA синхронизируемся с экраном:
+            # если следующий противник уже виден — не скроллим
             do_swipe = True
-            if should_use_multi_swipe:
+            if is_tag and should_use_multi_swipe:
                 next_i = len(results_local)
                 for p in range(1, 5):
                     opponent_at_p = swipes_done[0] + (p - 1)
@@ -421,6 +453,15 @@ class ArenaFactory(Location):
                 # Проверка докупки после нажатия confirm (Start)
                 refilled = self._refill()
                 if refilled:
+                    # Ждём закрытия диалога докупки, иначе клик Start может потеряться (Classic/Tag)
+                    wait_close = 5.0
+                    step = 0.5
+                    waited = 0
+                    while waited < wait_close and pixel_check_new(refill_paid, mistake=15):
+                        sleep(step)
+                        waited += step
+                    if waited >= wait_close:
+                        self.log('Refill dialog still visible after wait, clicking Start anyway')
                     click_on_start()
 
                 if self.terminated:
@@ -457,7 +498,11 @@ class ArenaFactory(Location):
                         "interval": 2,
                         "expect": lambda: pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue"),
                     }
-                    self.awaits([E_TAP_TO_CONTINUE, self.E_TERMINATE], interval=2)
+                    r_ttc = self.awaits([E_TAP_TO_CONTINUE, self.E_TERMINATE, self.E_TAG_AWAIT_TIMEOUT], interval=2)
+                    if r_ttc and r_ttc.get('name') == 'TagAwaitTimeout':
+                        self.log(f'Tap to continue wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), stopping')
+                        self.terminated = True
+                        break
 
                     if is_debug_mode():
                         debug_save_screenshot(suffix_name=f"arena-tag-tap-to-continue-i{i}")
@@ -486,7 +531,11 @@ class ArenaFactory(Location):
                         "interval": 2,
                         "expect": lambda: pixel_check_new(self.return_to_arena_coord, mistake=_rta_mistake, label="return_to_arena"),
                     }
-                    self.awaits([E_RETURN_TO_ARENA, self.E_TERMINATE], interval=2)
+                    r_rta = self.awaits([E_RETURN_TO_ARENA, self.E_TERMINATE, self.E_TAG_AWAIT_TIMEOUT], interval=2)
+                    if r_rta and r_rta.get('name') == 'TagAwaitTimeout':
+                        self.log(f'Return to arena wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), stopping')
+                        self.terminated = True
+                        break
                     self.log('RETURN TO ARENA')
                     click(self.return_to_arena_coord[0], self.return_to_arena_coord[1])
                     sleep(2)
@@ -525,8 +574,9 @@ class ArenaFactory(Location):
                     else:
                         self.log('Warning: Victory/defeat screen may still be visible')
 
-                # tells to skip several teams by swiping
-                should_use_multi_swipe = True
+                # tells to skip several teams by swiping (актуально только для Arena Tag)
+                if is_tag:
+                    should_use_multi_swipe = True
 
         # appends result from attack series into the global results list
         if len(results_local):
