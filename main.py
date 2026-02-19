@@ -1,6 +1,10 @@
 from bot import TelegramBOT
 from classes.App import *
 from locations.live_arena.index import *
+from helpers.common import get_last_chat_id
+from constants.index import list_profile_filenames, has_profile_mode
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CallbackQueryHandler
 import os
 import sys
 from dotenv import load_dotenv
@@ -96,39 +100,102 @@ def main():
                         'handler': command_data['handler'],
                     })
 
-                # register main commands according to 'tasks'
-                regular_command = []
-                if len(app.config['tasks']):
-                    regular_command = list(map(lambda task: {
-                        'command': task['command'],
-                        'description': f"command '{task['title']}'",
-                        'handler': app.task(
-                            name=task['command'],
-                            cb=app.get_entry(command_name=task['command'])['instance'].run
-                        ),
-                    }, app.config['tasks']))
+                def register_task_preset_commands():
+                    regular_command = []
+                    if len(app.config['tasks']):
+                        regular_command = list(map(lambda task: {
+                            'command': task['command'],
+                            'description': f"command '{task['title']}'",
+                            'handler': app.task(
+                                name=task['command'],
+                                cb=app.get_entry(command_name=task['command'])['instance'].run
+                            ),
+                            'track': True,
+                        }, app.config['tasks']))
 
-                # register addition commands according to 'presets'
-                presets_commands = []
-                if len(app.config['presets']):
-                    def process_preset_commands(upd, ctx, preset):
-                        for i in range(len(preset['commands'])):
-                            command = preset['commands'][i]
-                            app.task(
-                                name=command,
-                                cb=app.get_entry(command_name=command)['instance'].run
-                            )(upd, ctx)
+                    presets_commands = []
+                    if len(app.config['presets']):
+                        def process_preset_commands(upd, ctx, preset):
+                            for i in range(len(preset['commands'])):
+                                command = preset['commands'][i]
+                                app.task(
+                                    name=command,
+                                    cb=app.get_entry(command_name=command)['instance'].run
+                                )(upd, ctx)
 
-                    presets_commands = list(map(lambda preset: {
-                        'command': make_command_key(f"preset {preset['name']}"),
-                        'description': f"commands in a row: {', '.join(preset['commands'])}",
-                        'handler': lambda upd, ctx: process_preset_commands(upd, ctx, preset),
-                    }, app.config['presets']))
+                        presets_commands = list(map(lambda preset: {
+                            'command': make_command_key(f"preset {preset['name']}"),
+                            'description': f"commands in a row: {', '.join(preset['commands'])}",
+                            'handler': lambda upd, ctx, p=preset: process_preset_commands(upd, ctx, p),
+                            'track': True,
+                        }, app.config['presets']))
 
-                commands = regular_command + presets_commands
+                    for c in regular_command + presets_commands:
+                        telegram_bot.add(c)
 
-                for i in range(len(commands)):
-                    telegram_bot.add(commands[i])
+                register_task_preset_commands()
+
+                def loadconfig_cmd(upd, ctx):
+                    if not has_profile_mode():
+                        upd.message.reply_text('Режим профилей не активен (нет папки profiles с .json).')
+                        return
+                    names = list_profile_filenames()
+                    if not names:
+                        upd.message.reply_text('В папке profiles нет конфигов.')
+                        return
+                    keyboard = [[InlineKeyboardButton(n, callback_data=f'loadconfig:{i}')] for i, n in enumerate(names)]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    upd.message.reply_text('Выберите конфиг для загрузки:', reply_markup=reply_markup)
+
+                def loadconfig_callback(upd, ctx):
+                    query = upd.callback_query
+                    query.answer()
+                    data = query.data
+                    if not data.startswith('loadconfig:'):
+                        return
+                    idx = data.split(':', 1)[1]
+                    names = list_profile_filenames()
+                    try:
+                        i = int(idx)
+                        if i < 0 or i >= len(names):
+                            query.edit_message_text(text='Профиль не найден.')
+                            return
+                    except ValueError:
+                        query.edit_message_text(text='Неверные данные.')
+                        return
+                    name = names[i]
+                    try:
+                        app.load_profile_by_name(name)
+                        telegram_bot.remove_task_handlers()
+                        register_task_preset_commands()
+                        pid = getattr(app, 'current_player_id', None)
+                        if pid:
+                            query.edit_message_text(text=f'Игрок {name} ({pid}) загружен и готов к работе.')
+                        else:
+                            query.edit_message_text(text=f'Конфиг {name} загружен и готов к работе.')
+                    except Exception as e:
+                        query.edit_message_text(text=f'Ошибка загрузки: {e}')
+
+                if has_profile_mode():
+                    telegram_bot.add({
+                        'command': 'loadconfig',
+                        'description': 'Выбрать и загрузить конфиг из папки profiles',
+                        'handler': loadconfig_cmd,
+                    })
+                    telegram_bot.dp.add_handler(CallbackQueryHandler(loadconfig_callback, run_async=True))
+
+                # Сообщение о загруженном профиле (после закрытия окна — уже проверено в read_config)
+                if getattr(app, 'current_player_name', None):
+                    chat_id = get_last_chat_id()
+                    if chat_id:
+                        if getattr(app, 'current_player_id', None):
+                            msg = f"Игрок {app.current_player_name} ({app.current_player_id}) загружен и готов к работе"
+                        else:
+                            msg = f"Игрок {app.current_player_name} загружен и готов к работе"
+                        try:
+                            telegram_bot.updater.bot.send_message(chat_id=chat_id, text=msg)
+                        except Exception:
+                            pass
 
                 telegram_bot.listen()
                 telegram_bot.updater.idle()

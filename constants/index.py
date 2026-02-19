@@ -19,7 +19,13 @@ WINDOW_TOP_BAR_HEIGHT = 25
 BORDER_WIDTH = 7
 CONFIG_PATH = "config.json"
 CONFIG_DEFAULT_PATH = "config.default.json"
+PROFILES_DIR = "profiles"
 WINDOW_SIZE = [920, 540]
+
+# Координаты для получения player_id из игры (меню → место с id → кнопка копирования)
+PLAYER_ID_CLICK_1 = (44, 73)
+PLAYER_ID_CLICK_2 = (89, 345)
+PLAYER_ID_CLICK_3 = (771, 152)
 
 
 def get_config_path():
@@ -28,3 +34,26 @@ def get_config_path():
     if os.path.exists(CONFIG_PATH):
         return CONFIG_PATH
     return CONFIG_DEFAULT_PATH
+
+
+def has_profile_mode():
+    """True если папка profiles существует и в ней есть хотя бы один .json"""
+    import os
+    if not os.path.isdir(PROFILES_DIR):
+        return False
+    for name in os.listdir(PROFILES_DIR):
+        if name.endswith('.json'):
+            return True
+    return False
+
+
+def list_profile_filenames():
+    """Список имён .json файлов в папке profiles (без расширения для отображения)."""
+    import os
+    if not os.path.isdir(PROFILES_DIR):
+        return []
+    names = []
+    for name in sorted(os.listdir(PROFILES_DIR)):
+        if name.endswith('.json'):
+            names.append(name[:-5])  # без .json
+    return names

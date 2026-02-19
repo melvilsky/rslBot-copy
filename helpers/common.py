@@ -138,6 +138,28 @@ def log_save(message):
     logger.error(message)
 
 
+LAST_CHAT_ID_FILE = os.path.join('state', 'last_chat_id.txt')
+
+
+def save_last_chat_id(chat_id):
+    try:
+        folder_ensure('state')
+        with open(LAST_CHAT_ID_FILE, 'w') as f:
+            f.write(str(chat_id))
+    except Exception:
+        pass
+
+
+def get_last_chat_id():
+    try:
+        if os.path.isfile(LAST_CHAT_ID_FILE):
+            with open(LAST_CHAT_ID_FILE) as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    return None
+
+
 def log(message):
     # time = get_time_for_log()
 

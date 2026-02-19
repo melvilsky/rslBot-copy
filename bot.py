@@ -1,7 +1,8 @@
 import threading
-from helpers.common import log, log_save
+from helpers.common import log, log_save, save_last_chat_id
 import traceback
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import NetworkError, BadRequest
 from classes.Foundation import *
 
@@ -33,6 +34,7 @@ class TelegramBOT(threading.Thread, Foundation):
             self.updater = Updater(token=self.token, use_context=True)
             # Get the dispatcher to register handlers
             self.dp = self.updater.dispatcher
+            self._task_handlers = []  # handlers for task/preset commands (for replacement on profile switch)
 
             # Register the /start command
             for i in range(len(self.commands)):
@@ -79,6 +81,7 @@ class TelegramBOT(threading.Thread, Foundation):
         self.commands.append(obj)
         command = obj['command']
         handler = obj['handler']
+        track = obj.get('track', False)
 
         def final_callback(*args, retry=True):
             global EMULATE_NETWORK_ERROR
@@ -97,9 +100,26 @@ class TelegramBOT(threading.Thread, Foundation):
                     return
 
             log(f"Starting the command: {command}")
+            try:
+                update = args[0]
+                if getattr(update, 'effective_chat', None) is not None:
+                    save_last_chat_id(update.effective_chat.id)
+            except Exception:
+                pass
             handler(*args)
 
-        self.dp.add_handler(CommandHandler(command, final_callback, run_async=True))
+        handler_obj = CommandHandler(command, final_callback, run_async=True)
+        if track:
+            self._task_handlers.append(handler_obj)
+        self.dp.add_handler(handler_obj)
+
+    def remove_task_handlers(self):
+        for h in self._task_handlers:
+            try:
+                self.dp.remove_handler(h)
+            except Exception:
+                pass
+        self._task_handlers.clear()
 
         # except Exception as e:
         #     error = traceback.format_exc()
