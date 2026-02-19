@@ -86,8 +86,8 @@
   "tap_to_continue": {
     "x": 424,
     "y": 494,
-    "rgb": [210, 190, 130],
-    "mistake": 35,
+    "rgb": [255, 232, 125],
+    "mistake": 25,
     "description": "Надпись TAP TO CONTINUE (жёлто-золотистый текст) — только Arena Tag"
   },
   "return_to_arena": {
