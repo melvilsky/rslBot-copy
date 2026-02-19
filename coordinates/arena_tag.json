@@ -2,12 +2,68 @@
   "x_axis_info": 135,
   "item_height": 105,
   "button_locations": {
-    "1": { "x": 855, "y": 200 },
-    "2": { "x": 855, "y": 300 },
-    "3": { "x": 855, "y": 396 },
-    "4": { "x": 855, "y": 490 }
+    "1": {
+      "x": 855,
+      "y": 200
+    },
+    "2": {
+      "x": 855,
+      "y": 300
+    },
+    "3": {
+      "x": 855,
+      "y": 396
+    },
+    "4": {
+      "x": 855,
+      "y": 490
+    }
   },
-  "coins_region": [618, 38, 648, 55],
-  "coins_refill": { "x": 605, "y": 48 },
-  "tiers_coordinate": { "x": 152, "y": 304 }
+  "coins_region": [
+    618,
+    38,
+    648,
+    55
+  ],
+  "coins_refill": {
+    "x": 605,
+    "y": 48
+  },
+  "tiers_coordinate": {
+    "x": 152,
+    "y": 304
+  },
+  "quick_battle": {
+    "x": 710,
+    "y": 386,
+    "rgb": [
+      13,
+      58,
+      81
+    ],
+    "mistake": 10,
+    "description": "Чекбокс Quick Battle (на 20px выше Auto-Battle)"
+  },
+  "tap_to_continue": {
+    "x": 424,
+    "y": 494,
+    "rgb": [
+      214,
+      196,
+      109
+    ],
+    "mistake": 25,
+    "description": "Надпись TAP TO CONTINUE — только Arena Tag"
+  },
+  "return_to_arena": {
+    "x": 450,
+    "y": 498,
+    "rgb": [
+      255,
+      232,
+      125
+    ],
+    "mistake": 25,
+    "description": "Кнопка RETURN TO ARENA после боя — только Arena Tag"
+  }
 }

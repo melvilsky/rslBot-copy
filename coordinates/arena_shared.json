@@ -2,41 +2,65 @@
   "button_refresh": {
     "x": 817,
     "y": 133,
-    "rgb": [22, 124, 156],
+    "rgb": [
+      22,
+      124,
+      156
+    ],
     "mistake": 5,
     "description": "Кнопка обновления списка противников"
   },
   "refill_free": {
     "x": 455,
     "y": 380,
-    "rgb": [187, 130, 5],
+    "rgb": [
+      187,
+      130,
+      5
+    ],
     "mistake": 10,
     "description": "Кнопка бесплатного рефилла"
   },
   "refill_paid": {
     "x": 440,
     "y": 376,
-    "rgb": [255, 33, 51],
+    "rgb": [
+      255,
+      33,
+      51
+    ],
     "mistake": 10,
     "description": "Кнопка платного рефилла"
   },
   "defeat": {
     "x": 443,
     "y": 51,
-    "rgb": [229, 40, 104],
+    "rgb": [
+      229,
+      40,
+      104
+    ],
     "mistake": 20,
     "description": "Пиксель поражения на экране результата боя"
   },
   "tab_battle": {
     "x": 110,
     "y": 115,
-    "rgb": [2, 93, 154],
+    "rgb": [
+      2,
+      93,
+      154
+    ],
     "description": "Вкладка битвы"
   },
   "battle_end": {
     "x": 20,
     "y": 46,
-    "rgb": [255, 255, 255],
+    "rgb": [
+      255,
+      255,
+      255
+    ],
     "mistake": 3,
     "description": "Индикатор конца боя (белые часы в левом верхнем углу)"
   },
@@ -55,8 +79,16 @@
     "y": 455,
     "description": "Клик по кнопке получения награды из сундука"
   },
-  "red_dot_rgb": [225, 0, 0],
-  "attack_button_rgb": [187, 130, 5],
+  "red_dot_rgb": [
+    225,
+    0,
+    0
+  ],
+  "attack_button_rgb": [
+    187,
+    130,
+    5
+  ],
   "swipe_attack": {
     "x": 580,
     "y": 254,
@@ -75,26 +107,5 @@
     "y": 350,
     "distance": 400,
     "description": "Свайп вправо для просмотра наград"
-  },
-  "quick_battle": {
-    "x": 710,
-    "y": 386,
-    "rgb": [13, 58, 81],
-    "mistake": 10,
-    "description": "Чекбокс Quick Battle (на 20px выше Auto-Battle)"
-  },
-  "tap_to_continue": {
-    "x": 424,
-    "y": 494,
-    "rgb": [255, 232, 125],
-    "mistake": 25,
-    "description": "Надпись TAP TO CONTINUE (жёлто-золотистый текст) — только Arena Tag"
-  },
-  "return_to_arena": {
-    "x": 450,
-    "y": 498,
-    "rgb": [255, 232, 125],
-    "mistake": 25,
-    "description": "Кнопка RETURN TO ARENA после боя — только Arena Tag"
   }
 }

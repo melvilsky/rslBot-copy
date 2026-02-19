@@ -5,9 +5,9 @@
 ## Структура
 
 - `live_arena.json` — координаты для Live Arena
-- `arena_shared.json` — общие координаты для Arena Tag и Arena Classic (ArenaFactory)
-- `arena_tag.json` — координаты только для Arena Tag
-- `arena_classic.json` — координаты только для Arena Classic
+- `arena_shared.json` — общие координаты для Arena Tag и Arena Classic (рефилл, кнопки, свайпы, defeat, battle_end и т.д.)
+- `arena_tag.json` — только Arena Tag: button_locations, item_height, quick_battle, tap_to_continue, return_to_arena, coins_refill
+- `arena_classic.json` — только Arena Classic: button_locations, item_height, coins_refill, tiers
 
 ## Формат файла
 

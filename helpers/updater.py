@@ -66,7 +66,7 @@ def get_latest_version():
                 print(f"HTTP Error {response.status}: {response.reason}")
                 return None
                 
-            data = json.loads(response.read().decode())
+            data = json.loads(response.read().decode('utf-8'))
             
             # Извлекаем версию из tag_name (формат: v1.2.3)
             tag_name = data.get('tag_name', '')

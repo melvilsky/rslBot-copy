@@ -25,28 +25,21 @@ description: Tracks application version and release workflow. Ensures version is
 
 ## Как работает версионирование
 
-Версия управляется **полностью автоматически** через CI (`build.yml`).
+Версия управляется **автоматически** через CI (`build.yml`).
 
-**При каждом push в main:**
-1. CI берёт номер последнего GitHub Release
-2. Инкрементирует версию (по умолчанию PATCH)
-3. Обновляет `version.json` в сборке
-4. Создаёт GitHub Release с тегом `vX.Y.Z` и zip-артефактом
-5. Release notes генерируются из коммит-сообщений
+**При каждом push в main/master:**
+1. CI собирает exe, берёт последний GitHub Release (или version.json)
+2. Инкрементирует PATCH (или #minor → MINOR, #major → MAJOR в коммите)
+3. Обновляет version.json в сборке
+4. Создаёт GitHub Release с тегом vX.Y.Z и zip; release notes из коммитов
 
-**Управление типом инкремента через коммит-сообщение:**
-- Обычный коммит → **PATCH** (1.2.4 → 1.2.5)
-- Коммит с `#minor` → **MINOR** (1.2.4 → 1.3.0)
-- Коммит с `#major` → **MAJOR** (1.2.4 → 2.0.0)
-
-**ВАЖНО:** НЕ создавать теги вручную (`git tag`) и НЕ бампить `version.json` руками — это делает CI.
+**Ручной релиз:** release.yml по тегу `v*` — если нужно собрать под конкретный тег.
 
 ## Чеклист перед push в main
 
-- [ ] Код протестирован / проверен
-- [ ] Коммит-сообщение описывает изменения (оно пойдёт в release notes)
-- [ ] Если нужен MINOR/MAJOR bump — в сообщении есть `#minor` или `#major`
-- [ ] НЕ создаём теги вручную, НЕ бампим version.json — CI сделает сам
+- [ ] Код готов; коммит-сообщение описывает изменения (пойдёт в release notes)
+- [ ] Для MINOR: в коммите есть `#minor`; для MAJOR: `#major`
+- [ ] Не бампить version.json и не создавать теги вручную — CI сделает сам
 
 ## Правила подъёма версии
 
@@ -71,10 +64,8 @@ description: Tracks application version and release workflow. Ensures version is
 
 ## Краткий workflow: «Делаем релиз»
 
-1. Пишем код, коммитим с понятным сообщением
-2. `git push origin main`
-3. CI автоматически: собирает exe → инкрементирует версию → создаёт GitHub Release с release notes из коммитов
-4. Пользователи получают обновление через `/update` в Telegram боте
+1. Коммит с понятным сообщением → `git push origin main`
+2. CI сам: сборка → инкремент версии → создание Release с release notes из коммитов
+3. Пользователи обновляются через `/update` в боте
 
-**Для MINOR релиза:** `git commit -m "feat: новая функция #minor"` → push
-**Для MAJOR релиза:** `git commit -m "breaking: переделка API #major"` → push
+**#minor** или **#major** в сообщении коммита — для MINOR/MAJOR bump.

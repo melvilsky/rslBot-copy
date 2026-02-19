@@ -98,9 +98,6 @@ swipe_reward_coord = _shared['swipe_reward']
 
 RGB_RED_DOT = _shared['red_dot_rgb']
 ATTACK_BUTTON_RGB = _shared['attack_button_rgb']
-quick_battle_coord = get_arena_coordinate(_shared, 'quick_battle')
-tap_to_continue_coord = get_arena_coordinate(_shared, 'tap_to_continue')
-return_to_arena_coord = get_arena_coordinate(_shared, 'return_to_arena')
 PAID_REFILL_LIMIT = 0
 OUTPUT_ITEMS_AMOUNT = 10
 
@@ -340,17 +337,22 @@ class ArenaFactory(Location):
     def attack(self):
         results_local = []
         should_use_multi_swipe = False
+        swipes_done = [0]  # текущее состояние скролла (список не сбрасывается после RETURN TO ARENA)
 
         _sa = swipe_attack_coord
 
         def inner_swipe(swipes_amount):
             if should_use_multi_swipe:
-                for j in range(swipes_amount):
+                # список не сбрасывается после боя — делаем только дельту свайпов
+                delta = swipes_amount - swipes_done[0]
+                for _ in range(delta):
                     sleep(1)
                     swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
-            # @TODO Tag-arena does not work well because of 'max_swipe' value
+                swipes_done[0] = swipes_amount
             elif 0 < i <= self.max_swipe:
+                # первый проход по списку: по одному свайпу на шаг
                 swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
+                swipes_done[0] = swipes_amount
 
         for i in range(len(self.item_locations)):
             if self.terminated:
@@ -359,7 +361,27 @@ class ArenaFactory(Location):
             el = self.item_locations[i]
             swipes = el['swipes']
             position = el['position']
-            inner_swipe(swipes)
+            if i == 0:
+                swipes_done[0] = 0  # сброс при новом проходе по списку (после рефреша)
+
+            # После RETURN TO ARENA синхронизируемся с экраном: если следующий противник уже виден — не скроллим
+            do_swipe = True
+            if should_use_multi_swipe:
+                next_i = len(results_local)
+                for p in range(1, 5):
+                    opponent_at_p = swipes_done[0] + (p - 1)
+                    if opponent_at_p == next_i:
+                        pos_xy = self.button_locations[p]
+                        if pixel_check_new(
+                            [pos_xy[0], pos_xy[1], ATTACK_BUTTON_RGB],
+                            label=f"attack_button_pos{p}_presync",
+                        ):
+                            position = p
+                            do_swipe = False
+                            break
+            if do_swipe:
+                inner_swipe(swipes)
+
             pos = self.button_locations[position]
             x = pos[0]
             y = pos[1]
@@ -387,8 +409,8 @@ class ArenaFactory(Location):
                 # Quick Battle / AutoPlay
                 if self.name == 'Arena Tag':
                     self.log('Function: enable_quick_battle')
-                    _qb_mistake = get_arena_mistake(_shared, 'quick_battle', 10)
-                    await_click([quick_battle_coord], mistake=_qb_mistake, wait_limit=1)
+                    _qb_mistake = get_arena_mistake(_tag_data, 'quick_battle', 10)
+                    await_click([self.quick_battle_coord], mistake=_qb_mistake, wait_limit=1)
                 else:
                     enable_start_on_auto()
 
@@ -397,21 +419,34 @@ class ArenaFactory(Location):
                 click_on_start()
 
                 # Проверка докупки после нажатия confirm (Start)
-                if self._refill():
-                    # Если докупили, нужно снова нажать confirm
+                refilled = self._refill()
+                if refilled:
                     click_on_start()
 
                 if self.terminated:
                     self.log('Terminated')
                     break
 
+                # Не докупили и диалог докупки всё ещё на экране — бой не начался, выходим
+                if not refilled and pixel_check_new(refill_paid, mistake=15, label="refill_dialog_check"):
+                    self.log('Refill dialog still visible, battle did not start — terminating')
+                    self.terminated = True
+                    break
+
+                # Не докупили и диалог закрыли — проверяем, не вернулись ли к списку (бой не стартовал)
+                if not refilled:
+                    sleep(2)
+                    if pixel_check_new([x, y, ATTACK_BUTTON_RGB], mistake=10, label="back_to_list_check"):
+                        self.log('Back at list (battle did not start after closing refill dialog) — skipping wait')
+                        break
+
                 if self.name == 'Arena Tag':
                     # Arena Tag: ожидаем TAP TO CONTINUE вместо battle_end
-                    _ttc_mistake = get_arena_mistake(_shared, 'tap_to_continue', 35)
+                    _ttc_mistake = get_arena_mistake(_tag_data, 'tap_to_continue', 35)
 
                     if is_debug_mode():
                         debug_click_coordinates(
-                            tap_to_continue_coord[0], tap_to_continue_coord[1],
+                            self.tap_to_continue_coord[0], self.tap_to_continue_coord[1],
                             label="tap_to_continue_CHECK_POINT",
                             region=[0, 0, 920, 540],
                             grid=True
@@ -420,7 +455,7 @@ class ArenaFactory(Location):
                     E_TAP_TO_CONTINUE = {
                         "name": "TapToContinue",
                         "interval": 2,
-                        "expect": lambda: pixel_check_new(tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue"),
+                        "expect": lambda: pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue"),
                     }
                     self.awaits([E_TAP_TO_CONTINUE, self.E_TERMINATE], interval=2)
 
@@ -432,15 +467,15 @@ class ArenaFactory(Location):
                     result_name = 'VICTORY' if res else 'DEFEAT'
                     self.log(result_name)
 
-                    click(tap_to_continue_coord[0], tap_to_continue_coord[1])
+                    click(self.tap_to_continue_coord[0], self.tap_to_continue_coord[1])
                     sleep(2)
 
                     # Arena Tag: ожидаем кнопку RETURN TO ARENA
-                    _rta_mistake = get_arena_mistake(_shared, 'return_to_arena', 30)
+                    _rta_mistake = get_arena_mistake(_tag_data, 'return_to_arena', 30)
 
                     if is_debug_mode():
                         debug_click_coordinates(
-                            return_to_arena_coord[0], return_to_arena_coord[1],
+                            self.return_to_arena_coord[0], self.return_to_arena_coord[1],
                             label="return_to_arena_CHECK_POINT",
                             region=[0, 0, 920, 540],
                             grid=True
@@ -449,11 +484,11 @@ class ArenaFactory(Location):
                     E_RETURN_TO_ARENA = {
                         "name": "ReturnToArena",
                         "interval": 2,
-                        "expect": lambda: pixel_check_new(return_to_arena_coord, mistake=_rta_mistake, label="return_to_arena"),
+                        "expect": lambda: pixel_check_new(self.return_to_arena_coord, mistake=_rta_mistake, label="return_to_arena"),
                     }
                     self.awaits([E_RETURN_TO_ARENA, self.E_TERMINATE], interval=2)
                     self.log('RETURN TO ARENA')
-                    click(return_to_arena_coord[0], return_to_arena_coord[1])
+                    click(self.return_to_arena_coord[0], self.return_to_arena_coord[1])
                     sleep(2)
                 else:
                     # Arena Classic: старая логика
@@ -532,3 +567,6 @@ class ArenaTag(ArenaFactory):
             tiers_coordinates=_parse_point(_tag_data, 'tiers_coordinate'),
             props=props
         )
+        self.quick_battle_coord = get_arena_coordinate(_tag_data, 'quick_battle')
+        self.tap_to_continue_coord = get_arena_coordinate(_tag_data, 'tap_to_continue')
+        self.return_to_arena_coord = get_arena_coordinate(_tag_data, 'return_to_arena')

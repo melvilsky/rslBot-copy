@@ -11,14 +11,14 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write  # Необходимо для создания релизов
-      actions: read    # Для чтения workflow
+      contents: write
+      actions: read
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Полная история для проверки тегов
+        fetch-depth: 0
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -151,51 +151,40 @@ jobs:
       run: |
         $githubRepo = "${{ github.repository }}"
         $token = "${{ secrets.GITHUB_TOKEN }}"
-        
-        # Получаем последний релиз
         try {
           $headers = @{
             "Authorization" = "Bearer $token"
             "Accept" = "application/vnd.github.v3+json"
           }
           $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubRepo/releases/latest" -Headers $headers -ErrorAction Stop
-          $latestTag = $response.tag_name
-          $latestVersion = $latestTag -replace '^v', ''
+          $latestVersion = ($response.tag_name) -replace '^v', ''
           Write-Host "Latest release: $latestVersion"
         } catch {
           $latestVersion = $null
         }
-        
         if (-not $latestVersion -and (Test-Path "version.json")) {
           $versionData = Get-Content "version.json" | ConvertFrom-Json
           $latestVersion = $versionData.version
         }
         if (-not $latestVersion) { $latestVersion = "1.0.0" }
-        
         $versionParts = $latestVersion -split '\.'
         $major = [int]$versionParts[0]
         $minor = [int]$versionParts[1]
         $patch = [int]$versionParts[2]
-        
-        # Определяем тип инкремента из коммит-сообщения
-        # #major → MAJOR, #minor → MINOR, иначе → PATCH
         $commitMsg = "${{ github.event.head_commit.message }}"
         if ($commitMsg -match '#major') {
           $major++; $minor = 0; $patch = 0
-          Write-Host "MAJOR bump triggered by #major"
+          Write-Host "MAJOR bump (#major)"
         } elseif ($commitMsg -match '#minor') {
           $minor++; $patch = 0
-          Write-Host "MINOR bump triggered by #minor"
+          Write-Host "MINOR bump (#minor)"
         } else {
           $patch++
-          Write-Host "PATCH bump (default)"
+          Write-Host "PATCH bump"
         }
-        
         $newVersion = "$major.$minor.$patch"
         Write-Host "New version: $newVersion"
         "version=$newVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        
-        # Обновляем version.json
         if (Test-Path "version.json") {
           $versionData = Get-Content "version.json" | ConvertFrom-Json
         } else {
@@ -208,45 +197,26 @@ jobs:
       shell: powershell
     
     - name: Generate release notes from commits
-      id: release_notes
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       run: |
         $token = "${{ secrets.GITHUB_TOKEN }}"
         $githubRepo = "${{ github.repository }}"
-        $headers = @{
-          "Authorization" = "Bearer $token"
-          "Accept" = "application/vnd.github.v3+json"
-        }
-        
-        # Находим тег предыдущего релиза
+        $headers = @{ "Authorization" = "Bearer $token"; "Accept" = "application/vnd.github.v3+json" }
         $prevTag = ""
         try {
-          $response = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubRepo/releases/latest" -Headers $headers -ErrorAction Stop
-          $prevTag = $response.tag_name
+          $r = Invoke-RestMethod -Uri "https://api.github.com/repos/$githubRepo/releases/latest" -Headers $headers -ErrorAction Stop
+          $prevTag = $r.tag_name
         } catch {}
-        
-        # Собираем коммиты с прошлого релиза
         if ($prevTag) {
           $log = git log "$prevTag..HEAD" --pretty=format:"- %s" --no-merges 2>$null
         } else {
           $log = git log -10 --pretty=format:"- %s" --no-merges 2>$null
         }
-        
         if (-not $log) { $log = "- Обновление" }
-        
-        $notes = "## Что нового в v${{ steps.get_version.outputs.version }}`n`n"
-        $notes += ($log -join "`n")
-        $notes += "`n`n### Установка`n"
-        $notes += "1. Скачайте ``RaidSL-Telegram-Bot.zip```n"
-        $notes += "2. Распакуйте в папку с приложением`n"
-        $notes += "3. Запустите ``RaidSL-Telegram-Bot.exe```n`n"
-        $notes += "### Обновление`n"
-        $notes += "``/update`` в Telegram боте или распакуйте архив поверх существующей установки"
-        
-        # Сохраняем в файл чтобы не терять переносы строк
-        $notes | Out-File -FilePath "release_notes.md" -Encoding utf8
-        Write-Host "Release notes generated"
-        Write-Host $notes
+        $notes = "## Что нового в v${{ steps.get_version.outputs.version }}`n`n" + ($log -join "`n")
+        $notes += "`n`n### Установка`n1. Скачайте RaidSL-Telegram-Bot.zip`n2. Распакуйте в папку с приложением`n3. Запустите RaidSL-Telegram-Bot.exe`n`n### Обновление`n/update в Telegram боте или распакуйте архив поверх установки"
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText("$PWD/release_notes.md", $notes, $utf8NoBom)
       shell: powershell
     
     - name: Fetch tags
@@ -254,7 +224,7 @@ jobs:
       run: git fetch --tags
       shell: powershell
     
-    - name: Create Release (main/master only)
+    - name: Create Release (main/master)
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       uses: softprops/action-gh-release@v1
       with:
