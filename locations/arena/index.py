@@ -412,7 +412,8 @@ class ArenaFactory(Location):
                         debug_click_coordinates(
                             tap_to_continue_coord[0], tap_to_continue_coord[1],
                             label="tap_to_continue_CHECK_POINT",
-                            region=[0, 0, 920, 540]
+                            region=[0, 0, 920, 540],
+                            grid=True
                         )
 
                     E_TAP_TO_CONTINUE = {

@@ -331,72 +331,83 @@ def debug_save_screenshot(
     screenshot.save(str(output_debug / f"{file_name}.{ext}"), quality=quality)
 
 
-def debug_click_coordinates(x, y, label="click", region=None):
+def draw_debug_grid(img_np, gap_size=100):
+    """Рисует сетку с координатами поверх изображения (BGR numpy array)."""
+    height, width = img_np.shape[:2]
+    grid_color = (0, 255, 150)  # зелёный (BGR)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.4
+    font_color = (0, 255, 150)
+
+    for gx in range(0, width, gap_size):
+        cv2.line(img_np, (gx, 0), (gx, height), grid_color, 1)
+    for gy in range(0, height, gap_size):
+        cv2.line(img_np, (0, gy), (width, gy), grid_color, 1)
+
+    for gy in range(0, height, gap_size):
+        for gx in range(0, width, gap_size):
+            cx = int(gx + gap_size / 2)
+            cy = int(gy + gap_size / 2)
+            txt = f"({cx},{cy})"
+            ts = cv2.getTextSize(txt, font, font_scale, 1)[0]
+            tx = gx + (gap_size - ts[0]) // 2
+            ty = gy + (gap_size + ts[1]) // 2
+            cv2.putText(img_np, txt, (tx, ty), font, font_scale, font_color, 1, cv2.LINE_AA)
+
+    return img_np
+
+
+def debug_click_coordinates(x, y, label="click", region=None, grid=False):
     """
     Сохраняет скриншот с отмеченной точкой клика для отладки.
     
     Args:
         x, y: координаты клика
         label: метка для имени файла
-        region: область скриншота [x, y, width, height], если None - весь экран
+        region: область скриншота [x, y, width, height], если None - 200x200 вокруг точки
+        grid: если True — рисует сетку с координатами (шаг 100px)
     """
     try:
-        # Определяем область для скриншота
         if region is None:
-            # Делаем скриншот области вокруг точки клика (200x200 пикселей)
             margin = 100
             screen_width, screen_height = pyautogui.size()
-            
-            # Вычисляем границы области
             left = max(0, x - margin)
             top = max(0, y - margin)
             right = min(screen_width, x + margin)
             bottom = min(screen_height, y + margin)
-            
-            # Формат region для pyautogui: [left, top, width, height]
-            region = [
-                left,
-                top,
-                right - left,  # ширина
-                bottom - top   # высота
-            ]
+            region = [left, top, right - left, bottom - top]
         
-        # Делаем скриншот
         screenshot = pyautogui.screenshot(region=region)
         img_np = np.array(screenshot)
         img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-        
-        # Вычисляем координаты относительно области скриншота
+
+        if grid:
+            draw_debug_grid(img_np, gap_size=100)
+
         rel_x = x - region[0]
         rel_y = y - region[1]
         
-        # Рисуем красный круг в точке клика
-        cv2.circle(img_np, (rel_x, rel_y), 10, (0, 0, 255), 2)  # Красный круг радиусом 10
-        cv2.circle(img_np, (rel_x, rel_y), 2, (0, 0, 255), -1)  # Красная точка в центре
+        cv2.circle(img_np, (rel_x, rel_y), 10, (0, 0, 255), 2)
+        cv2.circle(img_np, (rel_x, rel_y), 2, (0, 0, 255), -1)
         
-        # Рисуем крестик для лучшей видимости
         line_length = 15
         cv2.line(img_np, (rel_x - line_length, rel_y), (rel_x + line_length, rel_y), (0, 0, 255), 2)
         cv2.line(img_np, (rel_x, rel_y - line_length), (rel_x, rel_y + line_length), (0, 0, 255), 2)
         
-        # Добавляем текст с координатами
         font = cv2.FONT_HERSHEY_SIMPLEX
         text = f"[{x}, {y}]"
         font_scale = 0.6
         thickness = 2
-        text_color = (0, 255, 255)  # Желтый цвет
-        bg_color = (0, 0, 0)  # Черный фон
+        text_color = (0, 255, 255)
+        bg_color = (0, 0, 0)
         
-        # Получаем размер текста
         (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
         
-        # Рисуем фон для текста
         cv2.rectangle(img_np, 
                       (rel_x - text_width // 2 - 5, rel_y - text_height - 25),
                       (rel_x + text_width // 2 + 5, rel_y - text_height - 5),
                       bg_color, -1)
         
-        # Рисуем текст
         cv2.putText(img_np, text,
                    (rel_x - text_width // 2, rel_y - text_height - 10),
                    font, font_scale, text_color, thickness, cv2.LINE_AA)
@@ -407,7 +418,6 @@ def debug_click_coordinates(x, y, label="click", region=None):
         file_name = f"{time_str}-{label}-[{x}-{y}].jpg"
         file_path = output_debug / file_name
         
-        # Конвертируем обратно в RGB для сохранения
         img_rgb = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img_rgb)
         img_pil.save(str(file_path), quality=95)
