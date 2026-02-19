@@ -154,7 +154,11 @@ class IronTwins(Location):
             close_popup()
 
     def _is_available(self):
-        return self.results.count(True) < self.keys or dungeons_is_able() and not self.terminated
+        # Если завершили все ключи или завершено принудительно - выходим
+        if self.completed or self.terminated:
+            return False
+        # Проверяем, есть ли еще доступные ключи или можно продолжать бои
+        return self.results.count(True) < self.keys and dungeons_is_able()
 
     def _apply_props(self, props=None):
         if props:
@@ -180,7 +184,13 @@ class IronTwins(Location):
             res = not pixel_check_new(self.RESULT_DEFEAT, mistake=10)
             self.results.append(res)
             self.completed = self.results.count(True) >= self.keys
+            
+            # Если завершили все ключи, выходим из цикла
+            if self.completed:
+                self.log(f"Completed: {self.results.count(True)}/{self.keys} keys used")
+                break
 
-        # @TODO Test
+        # Выходим из локации после завершения всех боев
         if not self.terminated:
+            self.log("Exiting Iron Twins Fortress")
             dungeons_click_stage_select()
