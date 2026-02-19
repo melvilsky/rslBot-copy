@@ -91,10 +91,10 @@
     "description": "Надпись TAP TO CONTINUE (жёлто-золотистый текст) — только Arena Tag"
   },
   "return_to_arena": {
-    "x": 855,
-    "y": 200,
-    "rgb": [0, 0, 0],
-    "mistake": 30,
-    "description": "Кнопка RETURN TO ARENA после боя — только Arena Tag. RGB определить через дебаг"
+    "x": 450,
+    "y": 498,
+    "rgb": [255, 232, 125],
+    "mistake": 25,
+    "description": "Кнопка RETURN TO ARENA после боя — только Arena Tag"
   }
 }
