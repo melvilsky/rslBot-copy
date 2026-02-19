@@ -85,7 +85,7 @@
   },
   "tap_to_continue": {
     "x": 450,
-    "y": 470,
+    "y": 450,
     "rgb": [255, 255, 255],
     "mistake": 15,
     "description": "Надпись TAP TO CONTINUE на экране результата боя"

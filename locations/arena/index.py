@@ -407,6 +407,14 @@ class ArenaFactory(Location):
                 if self.name == 'Arena Tag':
                     # Arena Tag: ожидаем TAP TO CONTINUE вместо battle_end
                     _ttc_mistake = get_arena_mistake(_shared, 'tap_to_continue', 15)
+
+                    if is_debug_mode():
+                        debug_click_coordinates(
+                            tap_to_continue_coord[0], tap_to_continue_coord[1],
+                            label="tap_to_continue_CHECK_POINT",
+                            region=[0, 0, 920, 540]
+                        )
+
                     E_TAP_TO_CONTINUE = {
                         "name": "TapToContinue",
                         "interval": 2,

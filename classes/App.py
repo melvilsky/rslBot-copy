@@ -3,6 +3,7 @@ from helpers.updater import is_update_available, should_check_for_updates, launc
 from classes.TaskManager import TaskManager
 from classes.Storage import Storage
 from classes.Foundation import *
+from classes.Recorder import Recorder
 from telegram.error import BadRequest
 from locations.rewards.index import *
 # from locations.live_arena.index_old import *
@@ -212,6 +213,7 @@ class App(Foundation):
         self.translations = None
         self.scheduler = None
         self.telegram_bot = None  # Будет установлен из main.py
+        self.recorder = Recorder()
 
         # @TODO Temp commented
         # self.storage = Storage(name='storage', folder='temp')
@@ -304,6 +306,14 @@ class App(Foundation):
             'report': {
                 'description': 'Report',
                 'handler': self.task('report', self.report, task_type='sync'),
+            },
+            'record_on': {
+                'description': 'Start recording clicks',
+                'handler': lambda upd, ctx: upd.message.reply_text(self.recorder.start()),
+            },
+            'record_off': {
+                'description': 'Stop recording and show results',
+                'handler': lambda upd, ctx: upd.message.reply_text(self.recorder.stop()),
             },
         }
 
