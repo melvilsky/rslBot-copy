@@ -834,8 +834,55 @@ def checkbox_toggle(x, y, state=True):
 
 
 def enable_super_raid():
+    """
+    Включает SUPER RAIDS, проверяя текущее состояние перед кликом.
+    Использует координаты из coordinates/iron_twins.json
+    """
     log('Function: enable_super_raid')
-    checkbox_toggle(655, 336, state=True)
+    
+    # Загружаем координаты из JSON
+    try:
+        coords_path = os.path.join('coordinates', 'iron_twins.json')
+        if os.path.exists(coords_path):
+            with open(coords_path, 'r', encoding='utf-8') as f:
+                coords_data = json.load(f)
+                if 'super_raids' in coords_data:
+                    coord = coords_data['super_raids']
+                    x = coord['x']
+                    y = coord['y']
+                    rgb_enabled = coord['rgb']  # [108, 237, 255] - цвет когда включено
+                    mistake = coord.get('mistake', 10)
+                else:
+                    log('WARNING: super_raids not found in iron_twins.json, using defaults')
+                    x, y, rgb_enabled, mistake = 654, 336, [108, 237, 255], 10
+        else:
+            log('WARNING: iron_twins.json not found, using defaults')
+            x, y, rgb_enabled, mistake = 654, 336, [108, 237, 255], 10
+    except Exception as e:
+        log(f'WARNING: Failed to load coordinates from iron_twins.json: {e}, using defaults')
+        x, y, rgb_enabled, mistake = 654, 336, [108, 237, 255], 10
+    
+    # Проверяем, включен ли SUPER RAIDS (RGB [108, 237, 255] - цвет когда включено)
+    super_raids_pixel = [x, y, rgb_enabled]
+    is_enabled = pixel_check_new(super_raids_pixel, mistake=mistake)
+    
+    if is_enabled:
+        log('SUPER RAIDS already enabled, skipping click')
+        return True
+    
+    # Если не включен - кликаем чтобы включить
+    log('SUPER RAIDS disabled, clicking to enable')
+    click(x, y)
+    sleep(0.5)
+    
+    # Проверяем, включился ли после клика
+    is_enabled_after = pixel_check_new(super_raids_pixel, mistake=mistake)
+    if is_enabled_after:
+        log('SUPER RAIDS enabled successfully')
+    else:
+        log('WARNING: Failed to enable SUPER RAIDS - may need to check RGB values')
+    
+    return is_enabled_after
 
 
 def disable_auto_climb():

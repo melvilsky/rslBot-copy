@@ -7,7 +7,12 @@
       237,
       255
     ],
+    "rgb_disabled": [
+      8,
+      20,
+      24
+    ],
     "mistake": 10,
-    "description": "Переключатель SUPER RAIDS в Iron Twins"
+    "description": "Переключатель SUPER RAIDS в Iron Twins. rgb - цвет когда включено, rgb_disabled - когда выключено"
   }
 }
