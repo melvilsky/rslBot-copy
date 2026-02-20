@@ -833,56 +833,88 @@ def checkbox_toggle(x, y, state=True):
             sleep(.3)
 
 
+def _read_pixel_color(x, y):
+    """Читает реальный цвет пикселя и возвращает [r, g, b]"""
+    p = pyautogui.pixel(x, y)
+    return [p[0], p[1], p[2]]
+
+
+def _is_super_raid_enabled(x, y, rgb_enabled, rgb_disabled, mistake):
+    """
+    Проверяет состояние SUPER RAIDS, логируя реальный цвет.
+    Returns: True если включено, False если выключено
+    """
+    actual = _read_pixel_color(x, y)
+    diff_enabled = [abs(actual[i] - rgb_enabled[i]) for i in range(3)]
+    diff_disabled = [abs(actual[i] - rgb_disabled[i]) for i in range(3)]
+    max_diff_enabled = max(diff_enabled)
+    max_diff_disabled = max(diff_disabled)
+
+    matches_enabled = all(d <= mistake for d in diff_enabled)
+    matches_disabled = all(d <= mistake for d in diff_disabled)
+
+    log(f"SUPER RAIDS pixel at ({x}, {y}):")
+    log(f"  Actual color:   {actual}")
+    log(f"  Enabled color:  {rgb_enabled} (diff={diff_enabled}, max={max_diff_enabled}, match={matches_enabled})")
+    log(f"  Disabled color: {rgb_disabled} (diff={diff_disabled}, max={max_diff_disabled}, match={matches_disabled})")
+
+    if matches_enabled:
+        log(f"  Result: ENABLED")
+        return True
+
+    log(f"  Result: DISABLED")
+    return False
+
+
 def enable_super_raid():
     """
-    Включает SUPER RAIDS, проверяя текущее состояние перед кликом.
-    Использует координаты из coordinates/iron_twins.json
+    Включает SUPER RAIDS с проверкой состояния перед и после клика.
+    Координаты и цвета из coordinates/iron_twins.json
+    Enabled:  (654, 336) RGB (108, 237, 255)
+    Disabled: (654, 336) RGB (8, 20, 24)
     """
     log('Function: enable_super_raid')
-    
-    # Загружаем координаты из JSON
+
+    x, y = 654, 336
+    rgb_enabled = [108, 237, 255]
+    rgb_disabled = [8, 20, 24]
+    mistake = 10
+
     try:
         coords_path = os.path.join('coordinates', 'iron_twins.json')
         if os.path.exists(coords_path):
             with open(coords_path, 'r', encoding='utf-8') as f:
-                coords_data = json.load(f)
-                if 'super_raids' in coords_data:
-                    coord = coords_data['super_raids']
-                    x = coord['x']
-                    y = coord['y']
-                    rgb_enabled = coord['rgb']  # [108, 237, 255] - цвет когда включено
-                    mistake = coord.get('mistake', 10)
-                else:
-                    log('WARNING: super_raids not found in iron_twins.json, using defaults')
-                    x, y, rgb_enabled, mistake = 654, 336, [108, 237, 255], 10
-        else:
-            log('WARNING: iron_twins.json not found, using defaults')
-            x, y, rgb_enabled, mistake = 654, 336, [108, 237, 255], 10
+                coord = json.load(f).get('super_raids', {})
+                x = coord.get('x', x)
+                y = coord.get('y', y)
+                rgb_enabled = coord.get('rgb', rgb_enabled)
+                rgb_disabled = coord.get('rgb_disabled', rgb_disabled)
+                mistake = coord.get('mistake', mistake)
     except Exception as e:
-        log(f'WARNING: Failed to load coordinates from iron_twins.json: {e}, using defaults')
-        x, y, rgb_enabled, mistake = 654, 336, [108, 237, 255], 10
-    
-    # Проверяем, включен ли SUPER RAIDS (RGB [108, 237, 255] - цвет когда включено)
-    super_raids_pixel = [x, y, rgb_enabled]
-    is_enabled = pixel_check_new(super_raids_pixel, mistake=mistake)
-    
-    if is_enabled:
-        log('SUPER RAIDS already enabled, skipping click')
+        log(f'WARNING: Failed to load iron_twins.json: {e}, using defaults')
+
+    if _is_super_raid_enabled(x, y, rgb_enabled, rgb_disabled, mistake):
+        log('SUPER RAIDS already enabled — no click needed')
         return True
-    
-    # Если не включен - кликаем чтобы включить
-    log('SUPER RAIDS disabled, clicking to enable')
+
+    log('SUPER RAIDS is OFF — clicking to enable')
     click(x, y)
-    sleep(0.5)
-    
-    # Проверяем, включился ли после клика
-    is_enabled_after = pixel_check_new(super_raids_pixel, mistake=mistake)
-    if is_enabled_after:
-        log('SUPER RAIDS enabled successfully')
-    else:
-        log('WARNING: Failed to enable SUPER RAIDS - may need to check RGB values')
-    
-    return is_enabled_after
+    sleep(1)
+
+    if _is_super_raid_enabled(x, y, rgb_enabled, rgb_disabled, mistake):
+        log('SUPER RAIDS enabled successfully after click')
+        return True
+
+    log('SUPER RAIDS still OFF after 1st click — retrying')
+    click(x, y)
+    sleep(1)
+
+    if _is_super_raid_enabled(x, y, rgb_enabled, rgb_disabled, mistake):
+        log('SUPER RAIDS enabled successfully after 2nd click')
+        return True
+
+    log('ERROR: SUPER RAIDS failed to enable after 2 attempts')
+    return False
 
 
 def disable_auto_climb():
