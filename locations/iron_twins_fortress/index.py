@@ -52,6 +52,7 @@ if _coordinates_data is None:
 
 super_raids_coord = get_iron_twins_coordinate(_coordinates_data, 'super_raids')
 super_raids_mistake = get_iron_twins_mistake(_coordinates_data, 'super_raids', 10)
+super_raids_rgb_disabled = _coordinates_data['super_raids'].get('rgb_disabled', [8, 20, 24])
 
 # @TODO Refactor is needed
 class IronTwins(Location):
@@ -64,6 +65,7 @@ class IronTwins(Location):
         self.keys = TWIN_KEYS_LIMIT
         self.super_raids_coord = super_raids_coord
         self.super_raids_mistake = super_raids_mistake
+        self.super_raids_rgb_disabled = super_raids_rgb_disabled
 
         self._apply_props(props=props)
 
@@ -92,55 +94,84 @@ class IronTwins(Location):
 
         # Enter the stage
         click(830, 460)
-        sleep(.5)
+        sleep(2)
         self._ensure_super_raids_enabled()
+
+    def _read_super_raids_state(self):
+        """
+        Читает реальный цвет пикселя super raids и определяет состояние.
+        Returns: True=enabled, False=disabled, None=transitional (ещё грузится)
+        """
+        x = self.super_raids_coord[0]
+        y = self.super_raids_coord[1]
+        rgb_enabled = self.super_raids_coord[2]
+        rgb_disabled = self.super_raids_rgb_disabled
+        mistake = self.super_raids_mistake
+
+        actual = [c for c in pyautogui.pixel(x, y)]
+        diff_on = [abs(actual[i] - rgb_enabled[i]) for i in range(3)]
+        diff_off = [abs(actual[i] - rgb_disabled[i]) for i in range(3)]
+        matches_on = all(d <= mistake for d in diff_on)
+        matches_off = all(d <= mistake for d in diff_off)
+
+        self.log(f"SUPER RAIDS pixel ({x}, {y}): actual={actual}")
+        self.log(f"  vs enabled  {rgb_enabled}: diff={diff_on}, match={matches_on}")
+        self.log(f"  vs disabled {rgb_disabled}: diff={diff_off}, match={matches_off}")
+
+        if matches_on:
+            self.log(f"  → ENABLED")
+            return True
+        if matches_off:
+            self.log(f"  → DISABLED")
+            return False
+
+        self.log(f"  → TRANSITIONAL (screen still loading)")
+        return None
 
     def _ensure_super_raids_enabled(self):
         x = self.super_raids_coord[0]
         y = self.super_raids_coord[1]
 
-        if is_debug_mode():
-            debug_click_coordinates(
-                x,
-                y,
-                label="iron_twins_super_raids_CHECK_POINT",
-                region=[0, 0, 920, 540],
-                grid=True
-            )
-            debug_save_screenshot(suffix_name="iron-twins-super-raids-before-check")
+        # Ждём пока экран загрузится — пиксель должен стать либо enabled, либо disabled
+        max_wait = 5
+        waited = 0
+        state = None
+        while waited < max_wait:
+            state = self._read_super_raids_state()
+            if state is not None:
+                break
+            sleep(0.5)
+            waited += 0.5
 
-        # Проверяем, включен ли SUPER RAIDS (RGB [108, 237, 255] - цвет когда включено)
-        enabled = pixel_check_new(
-            self.super_raids_coord,
-            mistake=self.super_raids_mistake,
-            label="iron_twins_super_raids"
-        )
-        if enabled:
-            self.log("SUPER RAIDS already enabled")
+        if state is None:
+            self.log(f"WARNING: SUPER RAIDS pixel did not settle after {max_wait}s, forcing click")
+
+        if state is True:
+            self.log("SUPER RAIDS already enabled — no click needed")
             return True
 
-        # Если не включен - кликаем чтобы включить
-        self.log("SUPER RAIDS disabled, trying to enable")
-        pyautogui.moveTo(x, y, .5, random_easying())
-        sleep(.2)
+        # Выключено или не определилось — кликаем
+        self.log("SUPER RAIDS is OFF — clicking to enable")
         click(x, y)
-        sleep(.5)
+        sleep(1)
 
-        if is_debug_mode():
-            debug_save_screenshot(suffix_name="iron-twins-super-raids-after-click")
+        state = self._read_super_raids_state()
+        if state is True:
+            self.log("SUPER RAIDS enabled successfully after click")
+            return True
 
-        # Проверяем, включился ли после клика
-        enabled_after_click = pixel_check_new(
-            self.super_raids_coord,
-            mistake=self.super_raids_mistake,
-            label="iron_twins_super_raids_after_click"
-        )
-        if enabled_after_click:
-            self.log("SUPER RAIDS enabled successfully")
-        else:
-            self.log("WARNING: failed to enable SUPER RAIDS - may need to check RGB values")
+        # Повторная попытка
+        self.log("SUPER RAIDS still OFF after 1st click — retrying")
+        click(x, y)
+        sleep(1)
 
-        return enabled_after_click
+        state = self._read_super_raids_state()
+        if state is True:
+            self.log("SUPER RAIDS enabled successfully after 2nd click")
+            return True
+
+        self.log("ERROR: SUPER RAIDS failed to enable after 2 attempts")
+        return False
 
     def _run(self, props=None):
         self._apply_props(props=props)

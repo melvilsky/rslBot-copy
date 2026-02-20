@@ -869,6 +869,7 @@ def _is_super_raid_enabled(x, y, rgb_enabled, rgb_disabled, mistake):
 def enable_super_raid():
     """
     Включает SUPER RAIDS с проверкой состояния перед и после клика.
+    Ждёт загрузки экрана (пиксель должен стать стабильным — enabled или disabled).
     Координаты и цвета из coordinates/iron_twins.json
     Enabled:  (654, 336) RGB (108, 237, 255)
     Disabled: (654, 336) RGB (8, 20, 24)
@@ -893,7 +894,42 @@ def enable_super_raid():
     except Exception as e:
         log(f'WARNING: Failed to load iron_twins.json: {e}, using defaults')
 
-    if _is_super_raid_enabled(x, y, rgb_enabled, rgb_disabled, mistake):
+    def check_state():
+        """Returns: True=enabled, False=disabled, None=transitional"""
+        actual = _read_pixel_color(x, y)
+        diff_on = [abs(actual[i] - rgb_enabled[i]) for i in range(3)]
+        diff_off = [abs(actual[i] - rgb_disabled[i]) for i in range(3)]
+        matches_on = all(d <= mistake for d in diff_on)
+        matches_off = all(d <= mistake for d in diff_off)
+
+        log(f"SUPER RAIDS pixel ({x}, {y}): actual={actual}")
+        log(f"  vs enabled  {rgb_enabled}: diff={diff_on}, match={matches_on}")
+        log(f"  vs disabled {rgb_disabled}: diff={diff_off}, match={matches_off}")
+
+        if matches_on:
+            log(f"  → ENABLED")
+            return True
+        if matches_off:
+            log(f"  → DISABLED")
+            return False
+        log(f"  → TRANSITIONAL (screen still loading)")
+        return None
+
+    # Ждём пока экран загрузится — пиксель должен стать либо enabled, либо disabled
+    max_wait = 5
+    waited = 0
+    state = None
+    while waited < max_wait:
+        state = check_state()
+        if state is not None:
+            break
+        sleep(0.5)
+        waited += 0.5
+
+    if state is None:
+        log(f'WARNING: pixel did not settle after {max_wait}s, forcing click')
+
+    if state is True:
         log('SUPER RAIDS already enabled — no click needed')
         return True
 
@@ -901,7 +937,8 @@ def enable_super_raid():
     click(x, y)
     sleep(1)
 
-    if _is_super_raid_enabled(x, y, rgb_enabled, rgb_disabled, mistake):
+    state = check_state()
+    if state is True:
         log('SUPER RAIDS enabled successfully after click')
         return True
 
@@ -909,7 +946,8 @@ def enable_super_raid():
     click(x, y)
     sleep(1)
 
-    if _is_super_raid_enabled(x, y, rgb_enabled, rgb_disabled, mistake):
+    state = check_state()
+    if state is True:
         log('SUPER RAIDS enabled successfully after 2nd click')
         return True
 
