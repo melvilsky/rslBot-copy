@@ -137,8 +137,8 @@ def callback_refresh(*args):
     sleep(2)
 
 
-# Таймаут ожидания кнопки Refresh (сек); при превышении — выход без бесконечного ожидания
-ARENA_REFRESH_WAIT_LIMIT = 120
+# Таймаут ожидания кнопки Refresh (сек); при превышении — выход без бесконечного ожидания (15 мин)
+ARENA_REFRESH_WAIT_LIMIT = 900
 # Таймаут ожидания TAP TO CONTINUE / RETURN TO ARENA в Arena Tag (сек)
 ARENA_TAG_AWAIT_LIMIT = 120
 

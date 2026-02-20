@@ -804,7 +804,12 @@ class App(Foundation):
         ], 1):
             x, y = base_x + dx, base_y + dy
             click(x, y)
-            delay = PLAYER_ID_DELAY_BETWEEN_CLICKS if coord < 3 else PLAYER_ID_DELAY_AFTER_COPY
+            if coord == 1:
+                delay = PLAYER_ID_DELAY_AFTER_FIRST
+            elif coord < 3:
+                delay = PLAYER_ID_DELAY_BETWEEN_CLICKS
+            else:
+                delay = PLAYER_ID_DELAY_AFTER_COPY
             sleep(delay)
         pyautogui.press('escape')
         sleep(0.3)
@@ -883,6 +888,10 @@ class App(Foundation):
             self.current_player_id = None
             profiles_with_id = self._get_profiles_with_player_id()
             all_names = list_profile_filenames()
+
+            # Сначала закрываем попапы, затем определяем конфиг по id из игры
+            close_popup_recursive()
+            sleep(1)
 
             if self._has_popup_open():
                 self.log('Пропуск автоопределения игрока: открыт попап')

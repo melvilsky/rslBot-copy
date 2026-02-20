@@ -254,6 +254,12 @@ class Foundation:
                 }))
             elif type(battle_time_limit) is bool:
                 _events.append(self.E_SKIP_BATTLE)
+        else:
+            # Гарантия: без лимита не ждём бесконечно (по умолчанию 900 сек)
+            _events.append(prepare_event(self.E_SKIP_BATTLE, {
+                'delay': 900,
+                'interval': 900,
+            }))
 
         return self.awaits(
             events=_events,

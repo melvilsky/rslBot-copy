@@ -35,6 +35,7 @@ class TelegramBOT(threading.Thread, Foundation):
             # Get the dispatcher to register handlers
             self.dp = self.updater.dispatcher
             self._task_handlers = []  # handlers for task/preset commands (for replacement on profile switch)
+            self._task_command_names = []  # command names of tracked entries (to remove from self.commands on profile switch)
 
             # Register the /start command
             for i in range(len(self.commands)):
@@ -111,6 +112,7 @@ class TelegramBOT(threading.Thread, Foundation):
         handler_obj = CommandHandler(command, final_callback, run_async=True)
         if track:
             self._task_handlers.append(handler_obj)
+            self._task_command_names.append(command)
         self.dp.add_handler(handler_obj)
 
     def remove_task_handlers(self):
@@ -120,6 +122,10 @@ class TelegramBOT(threading.Thread, Foundation):
             except Exception:
                 pass
         self._task_handlers.clear()
+        # Удаляем те же команды из self.commands, чтобы /help не показывал устаревшие и не дублировал при следующем add
+        task_names_set = set(self._task_command_names)
+        self.commands[:] = [c for c in self.commands if c.get('command') not in task_names_set]
+        self._task_command_names.clear()
 
         # except Exception as e:
         #     error = traceback.format_exc()
