@@ -183,19 +183,22 @@ def main():
                         'handler': loadconfig_cmd,
                     })
                     telegram_bot.dp.add_handler(CallbackQueryHandler(loadconfig_callback, run_async=True))
-
-                # Сообщение о загруженном профиле (после закрытия окна — уже проверено в read_config)
-                if getattr(app, 'current_player_name', None):
+                    
+                    # После загрузки всего предлагаем выбрать профиль в Telegram боте
                     chat_id = get_last_chat_id()
                     if chat_id:
-                        if getattr(app, 'current_player_id', None):
-                            msg = f"Игрок {app.current_player_name} ({app.current_player_id}) загружен и готов к работе"
-                        else:
-                            msg = f"Игрок {app.current_player_name} загружен и готов к работе"
-                        try:
-                            telegram_bot.updater.bot.send_message(chat_id=chat_id, text=msg)
-                        except Exception:
-                            pass
+                        names = list_profile_filenames()
+                        if names:
+                            keyboard = [[InlineKeyboardButton(n, callback_data=f'loadconfig:{i}')] for i, n in enumerate(names)]
+                            reply_markup = InlineKeyboardMarkup(keyboard)
+                            try:
+                                telegram_bot.updater.bot.send_message(
+                                    chat_id=chat_id,
+                                    text='Обнаружена папка profiles. Выберите конфиг для загрузки:',
+                                    reply_markup=reply_markup
+                                )
+                            except Exception:
+                                pass
 
                 telegram_bot.listen()
                 telegram_bot.updater.idle()

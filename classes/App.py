@@ -866,70 +866,22 @@ class App(Foundation):
         self._load_profile_file(filename_no_ext)
 
     def read_config(self):
+        """Загружает конфиг: всегда сначала дефолтный (config.json или config.default.json).
+        Если есть папка profiles, выбор профиля предлагается в Telegram боте после загрузки."""
         try:
-            if not has_profile_mode():
-                # Текущее поведение: один конфиг из корня
-                config_path = get_config_path()
-                if not os.path.exists(CONFIG_PATH) and os.path.exists(CONFIG_DEFAULT_PATH):
-                    import shutil
-                    shutil.copy(CONFIG_DEFAULT_PATH, CONFIG_PATH)
-                    self.log(f'Created {CONFIG_PATH} from {CONFIG_DEFAULT_PATH}')
-                    config_path = CONFIG_PATH
-                with open(config_path, encoding='utf-8') as config_file:
-                    config = json.load(config_file)
-                self.config = self._prepare_config(config)
-                self.current_player_name = None
-                self.current_player_id = None
-                self.log('Config is processed')
-                return
-
-            # Режим профилей: папка profiles есть и в ней есть .json
+            # Всегда грузим дефолтный конфиг из корня (как раньше)
+            config_path = get_config_path()
+            if not os.path.exists(CONFIG_PATH) and os.path.exists(CONFIG_DEFAULT_PATH):
+                import shutil
+                shutil.copy(CONFIG_DEFAULT_PATH, CONFIG_PATH)
+                self.log(f'Created {CONFIG_PATH} from {CONFIG_DEFAULT_PATH}')
+                config_path = CONFIG_PATH
+            with open(config_path, encoding='utf-8') as config_file:
+                config = json.load(config_file)
+            self.config = self._prepare_config(config)
             self.current_player_name = None
             self.current_player_id = None
-            profiles_with_id = self._get_profiles_with_player_id()
-            all_names = list_profile_filenames()
-
-            # Сначала закрываем попапы, затем определяем конфиг по id из игры
-            close_popup_recursive()
-            sleep(1)
-
-            if self._has_popup_open():
-                self.log('Пропуск автоопределения игрока: открыт попап')
-                # Fallback: первый профиль с player_id или первый .json
-                if profiles_with_id:
-                    name = profiles_with_id[0][0]
-                    self._load_profile_file(name)
-                elif all_names:
-                    self._load_profile_file(all_names[0])
-                else:
-                    log('No profile files in profiles/')
-                return
-
-            def _norm_id(s):
-                if not s:
-                    return ''
-                s = s.strip()
-                if '|' in s:
-                    parts = [p.strip() for p in s.split('|', 1)]
-                    return ' | '.join(parts) if len(parts) == 2 else s
-                return s
-
-            clipboard_id = self._collect_player_id_from_game()
-            if clipboard_id:
-                cid = _norm_id(clipboard_id)
-                for name, pid in profiles_with_id:
-                    if _norm_id(pid) == cid:
-                        self._load_profile_file(name)
-                        return
-                self.log(f'No profile with player_id matching clipboard: {clipboard_id!r}')
-
-            # Fallback: первый с player_id или первый .json
-            if profiles_with_id:
-                self._load_profile_file(profiles_with_id[0][0])
-            elif all_names:
-                self._load_profile_file(all_names[0])
-            else:
-                log('No profile files in profiles/')
+            self.log('Config is processed (default config loaded)')
 
         except SystemError:
             log('An error occurred while reading config file')

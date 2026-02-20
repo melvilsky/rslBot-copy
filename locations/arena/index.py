@@ -256,15 +256,45 @@ class ArenaFactory(Location):
             # @TODO Test
             sleep(1)
 
+        last_results_count = 0  # Отслеживание прогресса для предотвращения зависаний
+        no_progress_iterations = 0
+        MAX_NO_PROGRESS_ITERATIONS = 3  # Если 3 итерации подряд нет новых боев — обновляем список
+        
         while self.terminated is False:
             self.attack()
 
             last_results = self._get_last_results()
+            current_results_count = len(last_results)
+            
+            # Проверка прогресса: если количество боев не изменилось — увеличиваем счётчик
+            if current_results_count == last_results_count:
+                no_progress_iterations += 1
+            else:
+                no_progress_iterations = 0  # Сброс при появлении новых боев
+                last_results_count = current_results_count
 
             if self.terminated is False:
-                # at least one 'Defeat' or continued battles - should refresh
-                if last_results.count(False) > 0 or len(last_results) < OUTPUT_ITEMS_AMOUNT:
+                # Обновляем список если:
+                # 1. Все 10 боев завершены (независимо от побед/поражений)
+                # 2. ИЛИ список пуст (начальное состояние)
+                # 3. ИЛИ нет прогресса долгое время (защита от зависаний)
+                should_refresh = False
+                if len(last_results) == OUTPUT_ITEMS_AMOUNT:
+                    # Все 10 боев завершены — обновляем список (независимо от результатов)
+                    should_refresh = True
+                elif len(last_results) == 0:
+                    # Список пуст (начальное состояние) — можно обновить
+                    should_refresh = True
+                elif no_progress_iterations >= MAX_NO_PROGRESS_ITERATIONS:
+                    # Нет прогресса — обновляем список для предотвращения зависаний
+                    self.log(f'No progress for {no_progress_iterations} iterations, refreshing list')
+                    should_refresh = True
+                
+                if should_refresh:
                     self._refresh_arena()
+                    # Сброс счётчика после обновления
+                    no_progress_iterations = 0
+                    last_results_count = 0
 
     def _apply_props(self, props=None):
         if props is not None:
@@ -293,6 +323,16 @@ class ArenaFactory(Location):
         if response and response.get('name') == 'RefreshTimeout':
             self.log(f'Refresh button wait timeout ({ARENA_REFRESH_WAIT_LIMIT}s), stopping')
             self.terminated = True
+            return
+        
+        # После рефреша в Arena Tag нужно скроллить вверх для возврата в начало списка
+        # (список может остаться в позиции после последнего боя)
+        if self.name == 'Arena Tag':
+            _sr = swipe_refresh_coord
+            self.log('Scrolling up after refresh to return to list start')
+            for index in range(2):
+                swipe_new(_sr['direction'], _sr['x'], _sr['y'], _sr['distance'], speed=.2, instant_move=True)
+            sleep(1)
 
     def _refill(self):
         refilled = False
@@ -362,6 +402,8 @@ class ArenaFactory(Location):
         should_use_multi_swipe = False
         swipes_done = [0]  # текущее состояние скролла (для Arena Tag список не сбрасывается после RETURN TO ARENA)
         is_tag = (self.name == 'Arena Tag')
+        # После рефреша список сбрасывается в начало — сбрасываем swipes_done сразу
+        # (не только при i==0, чтобы избежать лишних свайпов после рефреша)
 
         _sa = swipe_attack_coord
 
@@ -391,8 +433,10 @@ class ArenaFactory(Location):
             el = self.item_locations[i]
             swipes = el['swipes']
             position = el['position']
+            # Сброс swipes_done при начале нового прохода (i==0) или после рефреша
+            # Для Arena Tag: после рефреша список сбрасывается, поэтому swipes_done тоже должен быть 0
             if i == 0:
-                swipes_done[0] = 0  # сброс при новом проходе по списку (после рефреша) для Arena Tag
+                swipes_done[0] = 0
 
             # Arena Tag: после RETURN TO ARENA синхронизируемся с экраном:
             # если следующий противник уже виден — не скроллим
@@ -410,6 +454,7 @@ class ArenaFactory(Location):
                             position = p
                             do_swipe = False
                             break
+            
             if do_swipe:
                 inner_swipe(swipes)
 
