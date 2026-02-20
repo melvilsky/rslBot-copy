@@ -151,10 +151,12 @@ class IronTwins(Location):
         ruby_button = find_needle_refill_ruby()
 
         if ruby_button is not None:
-            # self.completed = True
+            # Ключи закончились - завершаем работу и выходим из локации
             self.terminated = True
             self.completed = True
             close_popup()
+            self.log("Keys exhausted, exiting Iron Twins Fortress")
+            dungeons_click_stage_select()
 
     def _is_available(self):
         # Если завершено принудительно - выходим
@@ -198,7 +200,8 @@ class IronTwins(Location):
             # Не устанавливаем completed по количеству побед — с SUPER RAIDS один бой может использовать несколько ключей
             # Завершение работы происходит только когда _check_refill() обнаружит запрос на покупку за рубины
 
-        # Выходим из локации после завершения всех боев
-        if not self.terminated:
+        # Выходим из локации если цикл завершился без обнаружения запроса на покупку
+        # (если запрос был обнаружен, выход уже выполнен в _check_refill())
+        if not self.terminated and not self.completed:
             self.log("Exiting Iron Twins Fortress")
             dungeons_click_stage_select()
