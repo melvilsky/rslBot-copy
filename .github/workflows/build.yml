@@ -108,10 +108,12 @@ jobs:
         Write-Host "Set TESSERACT_PATH to: $tesseractPath"
       shell: powershell
     
-    # Сначала увеличиваем версию и пишем в version.json, чтобы в собранном приложении и в zip была правильная версия
+    # Bump version before build so dist and zip contain correct version
     - name: Auto-increment version
       id: get_version
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      env:
+        COMMIT_MSG: ${{ github.event.head_commit.message }}
       run: |
         $githubRepo = "${{ github.repository }}"
         $token = "${{ secrets.GITHUB_TOKEN }}"
@@ -135,7 +137,7 @@ jobs:
         $major = [int]$versionParts[0]
         $minor = [int]$versionParts[1]
         $patch = [int]$versionParts[2]
-        $commitMsg = "${{ github.event.head_commit.message }}"
+        $commitMsg = $env:COMMIT_MSG
         if ($commitMsg -match '#major') {
           $major++; $minor = 0; $patch = 0
           Write-Host "MAJOR bump (#major)"
