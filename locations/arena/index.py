@@ -301,11 +301,11 @@ class ArenaFactory(Location):
             if 'refill' in props:
                 refill_from_config = int(props['refill'])
                 self.refill_max_allowed = refill_from_config
-                # Загружаем оставшееся количество проходок с учетом уже купленных сегодня
                 location_key = self.NAME.lower().replace(' ', '_')
-                self.refill = get_remaining_refills(location_key, refill_from_config)
+                profile = getattr(self.app, 'current_player_name', None)
+                self.refill = get_remaining_refills(location_key, refill_from_config, profile_name=profile)
                 if self.refill < refill_from_config:
-                    self.log(f"Refill state loaded: {refill_from_config - self.refill} already purchased today (UTC), {self.refill} remaining")
+                    self.log(f"Refill state loaded (profile={profile or 'default'}): {refill_from_config - self.refill} already purchased today (UTC), {self.refill} remaining")
             if 'initial_refresh' in props:
                 self.initial_refresh = bool(props['initial_refresh'])
             if 'battle_time_limit' in props:
@@ -347,9 +347,9 @@ class ArenaFactory(Location):
         if ruby_button is not None:
             self.log('Free coins are NOT available')
             if self.refill > 0:
-                # Сохраняем факт покупки в состояние
                 location_key = self.NAME.lower().replace(' ', '_')
-                increment_purchase(location_key, self.refill_max_allowed)
+                profile = getattr(self.app, 'current_player_name', None)
+                increment_purchase(location_key, self.refill_max_allowed, profile_name=profile)
                 self.refill -= 1
                 click_on_refill()
                 refilled = True

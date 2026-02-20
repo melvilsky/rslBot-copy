@@ -375,11 +375,11 @@ class ArenaLive(Location):
         if 'refill' in props:
             refill_from_config = int(props['refill'])
             self.refill_max_allowed = refill_from_config
-            # Загружаем оставшееся количество проходок с учетом уже купленных сегодня
             location_key = self.NAME.lower().replace(' ', '_')
-            self.refill = get_remaining_refills(location_key, refill_from_config)
+            profile = getattr(self.app, 'current_player_name', None)
+            self.refill = get_remaining_refills(location_key, refill_from_config, profile_name=profile)
             if self.refill < refill_from_config:
-                self.log(f"Refill state loaded: {refill_from_config - self.refill} already purchased today (UTC), {self.refill} remaining")
+                self.log(f"Refill state loaded (profile={profile or 'default'}): {refill_from_config - self.refill} already purchased today (UTC), {self.refill} remaining")
 
         if 'idle_after_defeat' in props:
             self.idle_after_defeat = int(props['idle_after_defeat'])
@@ -489,9 +489,9 @@ class ArenaLive(Location):
             if self.refill > 0:
                 # wait and click on refill_paid
                 click(refill_paid[0], refill_paid[1], smart=True)
-                # Сохраняем факт покупки в состояние
                 location_key = self.NAME.lower().replace(' ', '_')
-                increment_purchase(location_key, self.refill_max_allowed)
+                profile = getattr(self.app, 'current_player_name', None)
+                increment_purchase(location_key, self.refill_max_allowed, profile_name=profile)
                 self.refill -= 1
                 self._click_on_find_opponent()
             else:
