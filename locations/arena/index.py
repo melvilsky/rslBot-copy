@@ -379,18 +379,9 @@ class ArenaFactory(Location):
                     swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
                     swipes_done[0] = swipes_amount
             else:
-                # Arena Classic: на первом проходе отслеживаем позицию и делаем дельту
-                # После боя список возвращается в начало (сбрасывается в начале следующего прохода)
+                # Arena Classic: как в 1.1.x — один свайп на шаг при 0 < i <= max_swipe (без дельты)
                 if 0 < i <= self.max_swipe:
-                    # Первый проход: по одному свайпу на шаг, отслеживаем позицию
                     swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
-                    swipes_done[0] = swipes_amount
-                elif swipes_amount > swipes_done[0]:
-                    # Если нужно больше свайпов, чем текущая позиция — делаем дельту
-                    delta = swipes_amount - swipes_done[0]
-                    for _ in range(delta):
-                        sleep(1)
-                        swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
                     swipes_done[0] = swipes_amount
 
         for i in range(len(self.item_locations)):
