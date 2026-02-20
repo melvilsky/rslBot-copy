@@ -90,9 +90,9 @@ def generate_version_json():
     version_file = 'version.json'
     main_dir = 'dist/main'
     
-    # Читаем текущую версию или используем дефолтную
+    # Читаем текущую версию или используем дефолтную (utf-8-sig на случай BOM от PowerShell на Windows)
     if os.path.exists(version_file):
-        with open(version_file, 'r', encoding='utf-8') as f:
+        with open(version_file, 'r', encoding='utf-8-sig') as f:
             version_data = json.load(f)
         current_version = version_data.get('version', '1.0.0')
     else:
