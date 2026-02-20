@@ -109,6 +109,7 @@ class IronTwins(Location):
             )
             debug_save_screenshot(suffix_name="iron-twins-super-raids-before-check")
 
+        # Проверяем, включен ли SUPER RAIDS (RGB [108, 237, 255] - цвет когда включено)
         enabled = pixel_check_new(
             self.super_raids_coord,
             mistake=self.super_raids_mistake,
@@ -118,6 +119,7 @@ class IronTwins(Location):
             self.log("SUPER RAIDS already enabled")
             return True
 
+        # Если не включен - кликаем чтобы включить
         self.log("SUPER RAIDS disabled, trying to enable")
         pyautogui.moveTo(x, y, .5, random_easying())
         sleep(.2)
@@ -127,6 +129,7 @@ class IronTwins(Location):
         if is_debug_mode():
             debug_save_screenshot(suffix_name="iron-twins-super-raids-after-click")
 
+        # Проверяем, включился ли после клика
         enabled_after_click = pixel_check_new(
             self.super_raids_coord,
             mistake=self.super_raids_mistake,
@@ -135,7 +138,7 @@ class IronTwins(Location):
         if enabled_after_click:
             self.log("SUPER RAIDS enabled successfully")
         else:
-            self.log("WARNING: failed to enable SUPER RAIDS")
+            self.log("WARNING: failed to enable SUPER RAIDS - may need to check RGB values")
 
         return enabled_after_click
 
@@ -157,9 +160,16 @@ class IronTwins(Location):
         # Если завершено принудительно - выходим
         if self.completed or self.terminated:
             return False
-        # Проверяем, есть ли еще доступные ключи (dungeons_is_able проверяет наличие кнопки Enter Stage)
+        
+        # Проверяем, есть ли запрос на покупку за рубины - если есть, ключи закончились
+        sleep(0.5)
+        ruby_button = find_needle_refill_ruby()
+        if ruby_button is not None:
+            return False
+        
+        # Если нет запроса на покупку - можно продолжать бои (есть кнопка Enter Stage или Replay)
         # С SUPER RAIDS один бой может использовать несколько ключей, поэтому не считаем по количеству побед
-        return dungeons_is_able()
+        return True
 
     def _apply_props(self, props=None):
         if props:
