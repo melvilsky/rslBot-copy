@@ -15,7 +15,7 @@ class TelegramBOT(threading.Thread, Foundation):
         self.token = props['token'] if 'token' in props and bool(props['token']) else None
 
         if not self.token:
-            raise 'No telegram token provided'
+            raise ValueError('No telegram token provided')
         else:
             self.commands = [
                 {

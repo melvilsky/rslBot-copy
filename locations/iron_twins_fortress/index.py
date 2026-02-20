@@ -154,11 +154,12 @@ class IronTwins(Location):
             close_popup()
 
     def _is_available(self):
-        # Если завершили все ключи или завершено принудительно - выходим
+        # Если завершено принудительно - выходим
         if self.completed or self.terminated:
             return False
-        # Проверяем, есть ли еще доступные ключи или можно продолжать бои
-        return self.results.count(True) < self.keys and dungeons_is_able()
+        # Проверяем, есть ли еще доступные ключи (dungeons_is_able проверяет наличие кнопки Enter Stage)
+        # С SUPER RAIDS один бой может использовать несколько ключей, поэтому не считаем по количеству побед
+        return dungeons_is_able()
 
     def _apply_props(self, props=None):
         if props:
@@ -183,12 +184,9 @@ class IronTwins(Location):
 
             res = not pixel_check_new(self.RESULT_DEFEAT, mistake=10)
             self.results.append(res)
-            self.completed = self.results.count(True) >= self.keys
             
-            # Если завершили все ключи, выходим из цикла
-            if self.completed:
-                self.log(f"Completed: {self.results.count(True)}/{self.keys} keys used")
-                break
+            # Не устанавливаем completed по количеству побед — с SUPER RAIDS один бой может использовать несколько ключей
+            # Завершение работы происходит только когда _check_refill() обнаружит запрос на покупку за рубины
 
         # Выходим из локации после завершения всех боев
         if not self.terminated:
