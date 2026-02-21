@@ -179,6 +179,7 @@ class ArenaLive(Location):
         self.refill = PAID_REFILL_LIMIT
         self.idle_after_defeat = 0
         self.refill_max_allowed = PAID_REFILL_LIMIT  # Сохраняем максимальное значение из конфига
+        self.ban_priority = None  # 1-5 = слот врага для бана; None = случайный слот
 
         # The variable resets each battle start
         self.current = {
@@ -383,6 +384,9 @@ class ArenaLive(Location):
 
         if 'idle_after_defeat' in props:
             self.idle_after_defeat = int(props['idle_after_defeat'])
+
+        if 'ban_priority' in props:
+            self.ban_priority = int(props['ban_priority'])
 
     def _confirm(self):
         click(870, 465)
@@ -643,10 +647,13 @@ class ArenaLive(Location):
         stage_2_events = await_stage_2()
         if self.E_STAGE_2['name'] == stage_2_events['name']:
             sleep(.5)
-            # Banning random second slot
-            random_slot = random.choice(enemy_slots)
-            x = random_slot[0]
-            y = random_slot[1]
+            # Выбор слота для бана: ban_priority 1-5 (1=первый слот) или случайный
+            if self.ban_priority is not None and 1 <= self.ban_priority <= len(enemy_slots):
+                slot = enemy_slots[self.ban_priority - 1]
+            else:
+                slot = random.choice(enemy_slots)
+            x = slot[0]
+            y = slot[1]
             click(x, y)
             sleep(.5)
 
