@@ -256,45 +256,47 @@ class ArenaFactory(Location):
             # @TODO Test
             sleep(1)
 
-        last_results_count = 0  # Отслеживание прогресса для предотвращения зависаний
-        no_progress_iterations = 0
-        MAX_NO_PROGRESS_ITERATIONS = 3  # Если 3 итерации подряд нет новых боев — обновляем список
-        
-        while self.terminated is False:
-            self.attack()
+        is_tag = (self.name == 'Arena Tag')
 
-            last_results = self._get_last_results()
-            current_results_count = len(last_results)
-            
-            # Проверка прогресса: если количество боев не изменилось — увеличиваем счётчик
-            if current_results_count == last_results_count:
-                no_progress_iterations += 1
-            else:
-                no_progress_iterations = 0  # Сброс при появлении новых боев
-                last_results_count = current_results_count
-
-            if self.terminated is False:
-                # Обновляем список если:
-                # 1. Все 10 боев завершены (независимо от побед/поражений)
-                # 2. ИЛИ список пуст (начальное состояние)
-                # 3. ИЛИ нет прогресса долгое время (защита от зависаний)
-                should_refresh = False
-                if len(last_results) == OUTPUT_ITEMS_AMOUNT:
-                    # Все 10 боев завершены — обновляем список (независимо от результатов)
-                    should_refresh = True
-                elif len(last_results) == 0:
-                    # Список пуст (начальное состояние) — можно обновить
-                    should_refresh = True
-                elif no_progress_iterations >= MAX_NO_PROGRESS_ITERATIONS:
-                    # Нет прогресса — обновляем список для предотвращения зависаний
-                    self.log(f'No progress for {no_progress_iterations} iterations, refreshing list')
-                    should_refresh = True
-                
-                if should_refresh:
+        if is_tag:
+            # Arena Tag: attack() проходит все 10 позиций за один вызов,
+            # после — всегда refresh (повторно атаковать тех же бессмысленно)
+            while self.terminated is False:
+                self.attack()
+                if self.terminated is False:
                     self._refresh_arena()
-                    # Сброс счётчика после обновления
+        else:
+            # Arena Classic: старая логика с отслеживанием прогресса
+            last_results_count = 0
+            no_progress_iterations = 0
+            MAX_NO_PROGRESS_ITERATIONS = 3
+
+            while self.terminated is False:
+                self.attack()
+
+                last_results = self._get_last_results()
+                current_results_count = len(last_results)
+
+                if current_results_count == last_results_count:
+                    no_progress_iterations += 1
+                else:
                     no_progress_iterations = 0
-                    last_results_count = 0
+                    last_results_count = current_results_count
+
+                if self.terminated is False:
+                    should_refresh = False
+                    if len(last_results) == OUTPUT_ITEMS_AMOUNT:
+                        should_refresh = True
+                    elif len(last_results) == 0:
+                        should_refresh = True
+                    elif no_progress_iterations >= MAX_NO_PROGRESS_ITERATIONS:
+                        self.log(f'No progress for {no_progress_iterations} iterations, refreshing list')
+                        should_refresh = True
+
+                    if should_refresh:
+                        self._refresh_arena()
+                        no_progress_iterations = 0
+                        last_results_count = 0
 
     def _apply_props(self, props=None):
         if props is not None:
@@ -398,65 +400,141 @@ class ArenaFactory(Location):
             sleep(.3)
 
     def attack(self):
+        if self.name == 'Arena Tag':
+            self._attack_tag()
+        else:
+            self._attack_classic()
+
+    def _attack_tag(self):
+        """
+        Arena Tag: линейный обход списка.
+        Всегда атакуем позицию из item_locations. Скролл инкрементальный.
+        После RETURN TO ARENA список остаётся на месте — scroll_pos не сбрасывается.
+        """
         results_local = []
-        should_use_multi_swipe = False
-        swipes_done = [0]  # текущее состояние скролла (для Arena Tag список не сбрасывается после RETURN TO ARENA)
-        is_tag = (self.name == 'Arena Tag')
-        # После рефреша список сбрасывается в начало — сбрасываем swipes_done сразу
-        # (не только при i==0, чтобы избежать лишних свайпов после рефреша)
-
+        scroll_pos = 0
         _sa = swipe_attack_coord
-
-        def inner_swipe(swipes_amount):
-            if is_tag:
-                if should_use_multi_swipe:
-                    # Arena Tag: список не сбрасывается после боя — делаем только дельту свайпов
-                    delta = swipes_amount - swipes_done[0]
-                    for _ in range(delta):
-                        sleep(1)
-                        swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
-                    swipes_done[0] = swipes_amount
-                elif 0 < i <= self.max_swipe:
-                    # Arena Tag: первый проход по списку — по одному свайпу на шаг
-                    swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
-                    swipes_done[0] = swipes_amount
-            else:
-                # Arena Classic: как в 1.1.x — один свайп на шаг при 0 < i <= max_swipe (без дельты)
-                if 0 < i <= self.max_swipe:
-                    swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
-                    swipes_done[0] = swipes_amount
 
         for i in range(len(self.item_locations)):
             if self.terminated:
                 break
 
             el = self.item_locations[i]
-            swipes = el['swipes']
+            target_scroll = el['swipes']
             position = el['position']
-            # Сброс swipes_done при начале нового прохода (i==0) или после рефреша
-            # Для Arena Tag: после рефреша список сбрасывается, поэтому swipes_done тоже должен быть 0
-            if i == 0:
-                swipes_done[0] = 0
 
-            # Arena Tag: после RETURN TO ARENA синхронизируемся с экраном:
-            # если следующий противник уже виден — не скроллим
-            do_swipe = True
-            if is_tag and should_use_multi_swipe:
-                next_i = len(results_local)
-                for p in range(1, 5):
-                    opponent_at_p = swipes_done[0] + (p - 1)
-                    if opponent_at_p == next_i:
-                        pos_xy = self.button_locations[p]
-                        if pixel_check_new(
-                            [pos_xy[0], pos_xy[1], ATTACK_BUTTON_RGB],
-                            label=f"attack_button_pos{p}_presync",
-                        ):
-                            position = p
-                            do_swipe = False
-                            break
-            
-            if do_swipe:
-                inner_swipe(swipes)
+            while scroll_pos < target_scroll:
+                sleep(0.5)
+                swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
+                scroll_pos += 1
+
+            pos = self.button_locations[position]
+            x = pos[0]
+            y = pos[1]
+
+            if is_debug_mode():
+                debug_save_screenshot(suffix_name=f"tag-before-attack-pos{position}-i{i}-scroll{scroll_pos}")
+
+            if not pixel_check_new([x, y, ATTACK_BUTTON_RGB], label=f"attack_button_pos{position}"):
+                self.log(f'Arena Tag | Position {position} (i={i}) — no attack button, skipping')
+                continue
+
+            self.log(f'Arena Tag | Attack position {position} (i={i}, scroll={scroll_pos})')
+            click(x, y, smart=True)
+            sleep(1.5)
+
+            if self.terminated:
+                break
+
+            self.log('Function: enable_quick_battle')
+            _qb_mistake = get_arena_mistake(_tag_data, 'quick_battle', 10)
+            await_click([self.quick_battle_coord], mistake=_qb_mistake, wait_limit=1)
+
+            if is_debug_mode():
+                debug_save_screenshot(suffix_name=f"tag-before-start-i{i}")
+
+            click(start_battle_coord[0], start_battle_coord[1], smart=True)
+            sleep(0.5)
+
+            refilled = self._refill()
+            if refilled:
+                wait_close = 5.0
+                step = 0.5
+                waited = 0
+                while waited < wait_close and pixel_check_new(refill_paid, mistake=15):
+                    sleep(step)
+                    waited += step
+                click(start_battle_coord[0], start_battle_coord[1], smart=True)
+                sleep(0.5)
+
+            if self.terminated:
+                break
+
+            if not refilled and pixel_check_new(refill_paid, mistake=15, label="refill_dialog_check"):
+                self.log('Refill dialog still visible, battle did not start — terminating')
+                self.terminated = True
+                break
+
+            if not refilled:
+                sleep(2)
+                if pixel_check_new([x, y, ATTACK_BUTTON_RGB], mistake=10, label="back_to_list_check"):
+                    self.log('Back at list (battle did not start) — skipping wait')
+                    break
+
+            # TAP TO CONTINUE
+            _ttc_mistake = get_arena_mistake(_tag_data, 'tap_to_continue', 35)
+            E_TAP_TO_CONTINUE = {
+                "name": "TapToContinue",
+                "interval": 2,
+                "expect": lambda: pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue"),
+            }
+            r_ttc = self.awaits([E_TAP_TO_CONTINUE, self.E_TERMINATE, self.E_TAG_AWAIT_TIMEOUT], interval=2)
+            if r_ttc and r_ttc.get('name') == 'TagAwaitTimeout':
+                self.log(f'Tap to continue wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), stopping')
+                self.terminated = True
+                break
+
+            res = not pixel_check_new(defeat, 20, label="defeat_check")
+            results_local.append(res)
+            self.log('VICTORY' if res else 'DEFEAT')
+
+            click(self.tap_to_continue_coord[0], self.tap_to_continue_coord[1])
+            sleep(2)
+
+            # RETURN TO ARENA
+            _rta_mistake = get_arena_mistake(_tag_data, 'return_to_arena', 30)
+            E_RETURN_TO_ARENA = {
+                "name": "ReturnToArena",
+                "interval": 2,
+                "expect": lambda: pixel_check_new(self.return_to_arena_coord, mistake=_rta_mistake, label="return_to_arena"),
+            }
+            r_rta = self.awaits([E_RETURN_TO_ARENA, self.E_TERMINATE, self.E_TAG_AWAIT_TIMEOUT], interval=2)
+            if r_rta and r_rta.get('name') == 'TagAwaitTimeout':
+                self.log(f'Return to arena wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), stopping')
+                self.terminated = True
+                break
+            self.log('RETURN TO ARENA')
+            click(self.return_to_arena_coord[0], self.return_to_arena_coord[1])
+            sleep(2)
+            # scroll_pos остаётся прежним — список на той же позиции
+
+        if len(results_local):
+            self.results.append(results_local)
+
+    def _attack_classic(self):
+        """Arena Classic: после боя список сбрасывается в начало."""
+        results_local = []
+        _sa = swipe_attack_coord
+
+        for i in range(len(self.item_locations)):
+            if self.terminated:
+                break
+
+            el = self.item_locations[i]
+            position = el['position']
+
+            if 0 < i <= self.max_swipe:
+                swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
 
             pos = self.button_locations[position]
             x = pos[0]
@@ -470,10 +548,9 @@ class ArenaFactory(Location):
                 click(start_battle_coord[0], start_battle_coord[1], smart=True)
                 sleep(0.5)
 
-            # checking - is an enemy already attacked
             is_not_attacked = len(results_local) - 1 < i
             if is_debug_mode():
-                debug_save_screenshot(suffix_name=f"arena-before-attack-pos{position}-i{i}")
+                debug_save_screenshot(suffix_name=f"classic-before-attack-pos{position}-i{i}")
             if pixel_check_new([x, y, ATTACK_BUTTON_RGB], label=f"attack_button_pos{position}") and is_not_attacked:
                 self.log(self.name + ' | Attack')
                 click_on_battle()
@@ -482,22 +559,14 @@ class ArenaFactory(Location):
                     self.log('Terminated')
                     break
 
-                # Quick Battle / AutoPlay
-                if self.name == 'Arena Tag':
-                    self.log('Function: enable_quick_battle')
-                    _qb_mistake = get_arena_mistake(_tag_data, 'quick_battle', 10)
-                    await_click([self.quick_battle_coord], mistake=_qb_mistake, wait_limit=1)
-                else:
-                    enable_start_on_auto()
+                enable_start_on_auto()
 
                 if is_debug_mode():
-                    debug_save_screenshot(suffix_name=f"arena-before-start-i{i}")
+                    debug_save_screenshot(suffix_name=f"classic-before-start-i{i}")
                 click_on_start()
 
-                # Проверка докупки после нажатия confirm (Start)
                 refilled = self._refill()
                 if refilled:
-                    # Ждём закрытия диалога докупки, иначе клик Start может потеряться (Classic/Tag)
                     wait_close = 5.0
                     step = 0.5
                     waited = 0
@@ -512,121 +581,52 @@ class ArenaFactory(Location):
                     self.log('Terminated')
                     break
 
-                # Не докупили и диалог докупки всё ещё на экране — бой не начался, выходим
                 if not refilled and pixel_check_new(refill_paid, mistake=15, label="refill_dialog_check"):
                     self.log('Refill dialog still visible, battle did not start — terminating')
                     self.terminated = True
                     break
 
-                # Не докупили и диалог закрыли — проверяем, не вернулись ли к списку (бой не стартовал)
                 if not refilled:
                     sleep(2)
                     if pixel_check_new([x, y, ATTACK_BUTTON_RGB], mistake=10, label="back_to_list_check"):
                         self.log('Back at list (battle did not start after closing refill dialog) — skipping wait')
                         break
 
-                if self.name == 'Arena Tag':
-                    # Arena Tag: ожидаем TAP TO CONTINUE вместо battle_end
-                    _ttc_mistake = get_arena_mistake(_tag_data, 'tap_to_continue', 35)
+                self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
+                if is_debug_mode():
+                    debug_save_screenshot(suffix_name=f"classic-battle-result-i{i}")
+                res = not pixel_check_new(defeat, 20, label="defeat_check")
+                results_local.append(res)
+                result_name = 'VICTORY' if res else 'DEFEAT'
+                self.log(result_name)
 
-                    if is_debug_mode():
-                        debug_click_coordinates(
-                            self.tap_to_continue_coord[0], self.tap_to_continue_coord[1],
-                            label="tap_to_continue_CHECK_POINT",
-                            region=[0, 0, 920, 540],
-                            grid=True
-                        )
+                tap_to_continue(times=2, wait_after=3)
+                sleep(2)
 
-                    E_TAP_TO_CONTINUE = {
-                        "name": "TapToContinue",
-                        "interval": 2,
-                        "expect": lambda: pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue"),
-                    }
-                    r_ttc = self.awaits([E_TAP_TO_CONTINUE, self.E_TERMINATE, self.E_TAG_AWAIT_TIMEOUT], interval=2)
-                    if r_ttc and r_ttc.get('name') == 'TagAwaitTimeout':
-                        self.log(f'Tap to continue wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), stopping')
-                        self.terminated = True
-                        break
+                max_wait_time = 7
+                check_interval = 0.5
+                waited = 0
+                while pixel_check_new(defeat, 20) and waited < max_wait_time:
+                    sleep(check_interval)
+                    waited += check_interval
 
-                    if is_debug_mode():
-                        debug_save_screenshot(suffix_name=f"arena-tag-tap-to-continue-i{i}")
-
-                    res = not pixel_check_new(defeat, 20, label="defeat_check")
-                    results_local.append(res)
-                    result_name = 'VICTORY' if res else 'DEFEAT'
-                    self.log(result_name)
-
-                    click(self.tap_to_continue_coord[0], self.tap_to_continue_coord[1])
-                    sleep(2)
-
-                    # Arena Tag: ожидаем кнопку RETURN TO ARENA
-                    _rta_mistake = get_arena_mistake(_tag_data, 'return_to_arena', 30)
-
-                    if is_debug_mode():
-                        debug_click_coordinates(
-                            self.return_to_arena_coord[0], self.return_to_arena_coord[1],
-                            label="return_to_arena_CHECK_POINT",
-                            region=[0, 0, 920, 540],
-                            grid=True
-                        )
-
-                    E_RETURN_TO_ARENA = {
-                        "name": "ReturnToArena",
-                        "interval": 2,
-                        "expect": lambda: pixel_check_new(self.return_to_arena_coord, mistake=_rta_mistake, label="return_to_arena"),
-                    }
-                    r_rta = self.awaits([E_RETURN_TO_ARENA, self.E_TERMINATE, self.E_TAG_AWAIT_TIMEOUT], interval=2)
-                    if r_rta and r_rta.get('name') == 'TagAwaitTimeout':
-                        self.log(f'Return to arena wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), stopping')
-                        self.terminated = True
-                        break
-                    self.log('RETURN TO ARENA')
-                    click(self.return_to_arena_coord[0], self.return_to_arena_coord[1])
-                    sleep(2)
-                else:
-                    # Arena Classic: старая логика
-                    self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
-                    if is_debug_mode():
-                        debug_save_screenshot(suffix_name=f"arena-battle-result-i{i}")
-                    res = not pixel_check_new(defeat, 20, label="defeat_check")
-                    results_local.append(res)
-                    result_name = 'VICTORY' if res else 'DEFEAT'
-                    self.log(result_name)
-
+                if pixel_check_new(defeat, 20):
+                    self.log('Victory/defeat screen still visible, retrying tap_to_continue')
                     tap_to_continue(times=2, wait_after=3)
                     sleep(2)
 
-                    max_wait_time = 7
-                    check_interval = 0.5
                     waited = 0
                     while pixel_check_new(defeat, 20) and waited < max_wait_time:
                         sleep(check_interval)
                         waited += check_interval
 
-                    if pixel_check_new(defeat, 20):
-                        self.log('Victory/defeat screen still visible, retrying tap_to_continue')
-                        tap_to_continue(times=2, wait_after=3)
-                        sleep(2)
+                if not pixel_check_new(defeat, 20):
+                    self.log('Victory/defeat screen closed successfully')
+                else:
+                    self.log('Warning: Victory/defeat screen may still be visible')
 
-                        waited = 0
-                        while pixel_check_new(defeat, 20) and waited < max_wait_time:
-                            sleep(check_interval)
-                            waited += check_interval
-
-                    if not pixel_check_new(defeat, 20):
-                        self.log('Victory/defeat screen closed successfully')
-                    else:
-                        self.log('Warning: Victory/defeat screen may still be visible')
-
-                # tells to skip several teams by swiping (актуально только для Arena Tag)
-                if is_tag:
-                    should_use_multi_swipe = True
-
-        # appends result from attack series into the global results list
         if len(results_local):
             self.results.append(results_local)
-            # @TODO Temp commented
-            # self.event_dispatcher.publish('update_results')
 
 
 class ArenaClassic(ArenaFactory):
