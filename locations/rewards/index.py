@@ -40,29 +40,28 @@ class Rewards(Location):
     def __init__(self, app, props=None):
         Location.__init__(self, name='Rewards', app=app, report_predicate=self._report)
 
-        self.results = {
-            'regular_quests': {
-                'name': 'Regular Quests',
-                'total': 0,
-            },
-            'play_time': {
-                'name': 'Play-Time',
-                'total': 0,
-            }
-        }
-
         self.event_dispatcher.subscribe('run', self._run)
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-        t1 = self.results['regular_quests']['total']
-        t2 = self.results['play_time']['total']
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('rewards', profile_name=profile)
+        t1 = stats.get('regular_quests', 0)
+        t2 = stats.get('play_time', 0)
         total = t1 + t2
 
         if total > 0:
             res_list.append(f"Obtained: {str(total)}")
 
         return res_list
+
+    def _record_reward(self, key):
+        from helpers.battle_stats import load_stats, update_stats
+        profile = getattr(self.app, 'current_player_name', None)
+        current = load_stats('rewards', profile_name=profile)
+        current[key] = current.get(key, 0) + 1
+        update_stats('rewards', current, profile_name=profile)
 
     def _run(self, props=None):
         self.quests_run()
@@ -89,7 +88,7 @@ class Rewards(Location):
 
             button_position = get_button_claim()
             while button_position is not None:
-                self.results['regular_quests']['total'] += 1
+                self._record_reward('regular_quests')
                 x2 = button_position[0]
                 y2 = button_position[1]
                 pyautogui.moveTo(x2, y2, .5, random_easying())
@@ -115,7 +114,7 @@ class Rewards(Location):
                     x2 = advanced_pixel['x']
                     y2 = advanced_pixel['y']
                     if pixel_check_new([x2, y2, advanced_rgb], mistake=10):
-                        self.results['regular_quests']['total'] += 1
+                        self._record_reward('regular_quests')
                         # click on a reward
                         click(x2, y2 + 10)
                         sleep(1.5)
@@ -123,7 +122,7 @@ class Rewards(Location):
     def play_time_obtain(self):
         position = get_red_dot()
         while position is not None:
-            self.results['play_time']['total'] += 1
+            self._record_reward('play_time')
             x = position[0]
             y = position[1]
             click(x, y)

@@ -20,10 +20,6 @@ class DemonLord(Location):
     def __init__(self, app, props=None):
         Location.__init__(self, name='Demon Lord', app=app, report_predicate=self._report)
 
-        self.results = {
-            'obtained': [],
-            'attacked': []
-        }
         self.stages = DEFAULT_STAGES
         self.completed = False
 
@@ -35,12 +31,16 @@ class DemonLord(Location):
         self.event_dispatcher.subscribe('run', self._run)
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-
-        if len(self.results['obtained']):
-            res_list.append(f"Obtained: {','.join(self.results['obtained'])}")
-        if len(self.results['attacked']):
-            res_list.append(f"Attacked: {','.join(self.results['attacked'])}")
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('demon_lord', profile_name=profile)
+        obtained = stats.get('obtained', [])
+        attacked = stats.get('attacked', [])
+        if len(obtained):
+            res_list.append(f"Obtained: {','.join(obtained)}")
+        if len(attacked):
+            res_list.append(f"Attacked: {','.join(attacked)}")
 
         return res_list
 
@@ -91,7 +91,12 @@ class DemonLord(Location):
                 #     sleep(5)
 
                 self.log('Obtained reward from Demon Lord ' + stage)
-                self.results['obtained'].append(stage)
+                from helpers.battle_stats import load_stats, update_stats
+                profile = getattr(self.app, 'current_player_name', None)
+                current = load_stats('demon_lord', profile_name=profile)
+                obtained = current.get('obtained', [])
+                obtained.append(stage)
+                update_stats('demon_lord', {'obtained': obtained}, profile_name=profile)
             else:
                 self.log('No reward found from Demon Lord ' + stage)
             sleep(2)
@@ -131,4 +136,9 @@ class DemonLord(Location):
                 sleep(2)
                 # removing already attacked Demon Lord from the array
                 self.stages.remove(stage)
-                self.results['attacked'].append(str(stage))
+                from helpers.battle_stats import load_stats, update_stats
+                profile = getattr(self.app, 'current_player_name', None)
+                current = load_stats('demon_lord', profile_name=profile)
+                attacked = current.get('attacked', [])
+                attacked.append(str(stage))
+                update_stats('demon_lord', {'attacked': attacked}, profile_name=profile)

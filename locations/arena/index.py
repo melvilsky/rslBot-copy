@@ -140,7 +140,7 @@ def callback_refresh(*args):
 # Таймаут ожидания кнопки Refresh (сек); при превышении — выход без бесконечного ожидания (15 мин)
 ARENA_REFRESH_WAIT_LIMIT = 900
 # Таймаут ожидания TAP TO CONTINUE / RETURN TO ARENA в Arena Tag (сек)
-ARENA_TAG_AWAIT_LIMIT = 120
+ARENA_TAG_AWAIT_LIMIT = 180
 
 
 class ArenaFactory(Location):
@@ -226,16 +226,30 @@ class ArenaFactory(Location):
         self.event_dispatcher.subscribe('run', self._run)
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-        if len(self.results):
-            flatten_list = flatten(self.results)
-            w = flatten_list.count(True)
-            l = flatten_list.count(False)
-            str_battles = f"Battles: {str(len(flatten_list))}"
-            str_wr = f"(WR: {calculate_win_rate(w, l)})"
+        profile = getattr(self.app, 'current_player_name', None)
+        location_key = self.NAME.lower().replace(' ', '_')
+        stats = load_stats(location_key, profile_name=profile)
+        wins = stats.get('wins', 0)
+        losses = stats.get('losses', 0)
+        t = wins + losses
+        if t:
+            str_battles = f"Battles: {str(t)}"
+            str_wr = f"(WR: {calculate_win_rate(wins, losses)})"
             res_list.append(f"{str_battles} {str_wr}")
 
         return res_list
+
+    def _persist_results(self, results_local):
+        from helpers.battle_stats import record_win, record_loss
+        profile = getattr(self.app, 'current_player_name', None)
+        location_key = self.NAME.lower().replace(' ', '_')
+        for r in results_local:
+            if r:
+                record_win(location_key, profile_name=profile)
+            else:
+                record_loss(location_key, profile_name=profile)
 
     def _enter(self):
         click_on_progress_info()
@@ -399,6 +413,38 @@ class ArenaFactory(Location):
             click(tab_battle[0], tab_battle[1])
             sleep(.3)
 
+    def _recover_from_tag_timeout(self, rta_mistake=30):
+        """
+        Попытка восстановления после TagAwaitTimeout.
+        Кликает по tap_to_continue / return_to_arena, жмёт ESC.
+        Returns True если удалось вернуться к списку (attack button видна).
+        """
+        self.log('Recovery: clicking tap_to_continue area')
+        click(self.tap_to_continue_coord[0], self.tap_to_continue_coord[1])
+        sleep(2)
+
+        if pixel_check_new(self.return_to_arena_coord, mistake=rta_mistake, label="recovery_rta"):
+            self.log('Recovery: ReturnToArena detected, clicking')
+            click(self.return_to_arena_coord[0], self.return_to_arena_coord[1])
+            sleep(2)
+            return True
+
+        self.log('Recovery: clicking return_to_arena area')
+        click(self.return_to_arena_coord[0], self.return_to_arena_coord[1])
+        sleep(2)
+
+        for _ in range(3):
+            pyautogui.press('escape')
+            sleep(1)
+
+        pos = self.button_locations[1]
+        if pixel_check_new([pos[0], pos[1], ATTACK_BUTTON_RGB], mistake=10, label="recovery_list_check"):
+            self.log('Recovery: back at arena list')
+            return True
+
+        self.log('Recovery: could not return to arena list')
+        return False
+
     def attack(self):
         if self.name == 'Arena Tag':
             self._attack_tag()
@@ -483,6 +529,7 @@ class ArenaFactory(Location):
 
             # TAP TO CONTINUE
             _ttc_mistake = get_arena_mistake(_tag_data, 'tap_to_continue', 35)
+            _rta_mistake = get_arena_mistake(_tag_data, 'return_to_arena', 30)
             E_TAP_TO_CONTINUE = {
                 "name": "TapToContinue",
                 "interval": 2,
@@ -490,8 +537,11 @@ class ArenaFactory(Location):
             }
             r_ttc = self.awaits([E_TAP_TO_CONTINUE, self.E_TERMINATE, self.E_TAG_AWAIT_TIMEOUT], interval=2)
             if r_ttc and r_ttc.get('name') == 'TagAwaitTimeout':
-                self.log(f'Tap to continue wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), stopping')
-                self.terminated = True
+                self.log(f'Tap to continue wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), attempting recovery')
+                recovered = self._recover_from_tag_timeout(_rta_mistake)
+                if not recovered:
+                    self.log('Recovery failed, stopping')
+                    self.terminated = True
                 break
 
             res = not pixel_check_new(defeat, 20, label="defeat_check")
@@ -502,7 +552,6 @@ class ArenaFactory(Location):
             sleep(2)
 
             # RETURN TO ARENA
-            _rta_mistake = get_arena_mistake(_tag_data, 'return_to_arena', 30)
             E_RETURN_TO_ARENA = {
                 "name": "ReturnToArena",
                 "interval": 2,
@@ -510,8 +559,11 @@ class ArenaFactory(Location):
             }
             r_rta = self.awaits([E_RETURN_TO_ARENA, self.E_TERMINATE, self.E_TAG_AWAIT_TIMEOUT], interval=2)
             if r_rta and r_rta.get('name') == 'TagAwaitTimeout':
-                self.log(f'Return to arena wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), stopping')
-                self.terminated = True
+                self.log(f'Return to arena wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), attempting recovery')
+                recovered = self._recover_from_tag_timeout(_rta_mistake)
+                if not recovered:
+                    self.log('Recovery failed, stopping')
+                    self.terminated = True
                 break
             self.log('RETURN TO ARENA')
             click(self.return_to_arena_coord[0], self.return_to_arena_coord[1])
@@ -520,6 +572,7 @@ class ArenaFactory(Location):
 
         if len(results_local):
             self.results.append(results_local)
+            self._persist_results(results_local)
 
     def _attack_classic(self):
         """Arena Classic: после боя список сбрасывается в начало."""
@@ -627,6 +680,7 @@ class ArenaFactory(Location):
 
         if len(results_local):
             self.results.append(results_local)
+            self._persist_results(results_local)
 
 
 class ArenaClassic(ArenaFactory):

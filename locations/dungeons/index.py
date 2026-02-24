@@ -74,7 +74,6 @@ class Dungeons(Location):
         Location.__init__(self, name='Dungeon', app=app, report_predicate=self._report)
 
         self.dungeons = []
-        self.results = {}
         self.current = None
 
         self.bank = 0
@@ -89,16 +88,18 @@ class Dungeons(Location):
         self.event_dispatcher.subscribe('run', self._run)
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-        for _id, value in self.results.items():
-            j, dungeon = find(DUNGEON_DATA, lambda x: x['id'] == _id)
-            key = dungeon['name'] if dungeon else _id
-            has_battles = bool(value['victory'] + value['defeat'])
-
-            if has_battles:
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('dungeon', profile_name=profile)
+        sub = stats.get('sub', {})
+        for key, value in sub.items():
+            wins = value.get('wins', 0)
+            losses = value.get('losses', 0)
+            if wins + losses > 0:
                 res_list.append(f"Location: {key}")
-                str_battles = f"Battles: {value['victory'] + value['defeat']}"
-                str_wr = f"(WR: {calculate_win_rate(value['victory'], value['defeat'])})"
+                str_battles = f"Battles: {wins + losses}"
+                str_wr = f"(WR: {calculate_win_rate(wins, losses)})"
                 res_list.append(f"{str_battles} {str_wr}")
 
         return res_list
@@ -260,21 +261,17 @@ class Dungeons(Location):
 
     def _initialize(self, dungeon):
         self.current = dungeon
-        if dungeon['id'] not in self.results:
-            self.results[dungeon['id']] = {
-                'victory': 0,
-                'defeat': 0,
-            }
 
     def _able_attacking(self, cost):
         return bool(cost) and self.current['energy'] >= cost and not self.terminated
 
     def _save_result(self, condition):
+        from helpers.battle_stats import record_win_loss
         _id = self.current['id']
-        if condition:
-            self.results[_id]['victory'] += 1
-        else:
-            self.results[_id]['defeat'] += 1
+        j, dungeon = find(DUNGEON_DATA, lambda x: x['id'] == _id)
+        sub_key = dungeon['name'] if dungeon else _id
+        profile = getattr(self.app, 'current_player_name', None)
+        record_win_loss('dungeon', sub_key, condition, profile_name=profile)
 
     def _exit_location(self):
         # click on the "Stage selection"

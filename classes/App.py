@@ -239,8 +239,17 @@ class App(Foundation):
             'name': "Index-",
             'interval': .5,
             'blocking': False,
+            'limit': 120,
             'expect': lambda: not find_needle_burger(),
             'callback': close_popup,
+        }
+
+        self.E_INDEX_PAGE_TIMEOUT = {
+            'name': "IndexPageTimeout",
+            'delay': 180,
+            'interval': 1,
+            'expect': lambda: True,
+            'blocking': True,
         }
 
         self.E_TERMINATE_GAME = {
@@ -1116,11 +1125,20 @@ class App(Foundation):
         if predicate is not None:
             predicate()
 
-        self.awaits([
+        result = self.awaits([
             self.E_POPUP_RELOGIN_ERROR,
             self.INDEX_PAGE_DETECTED,
-            self.INDEX_PAGE_NOT_DETECTED
+            self.INDEX_PAGE_NOT_DETECTED,
+            self.E_INDEX_PAGE_TIMEOUT,
         ])
+
+        if result and result.get('name') == 'IndexPageTimeout':
+            self.log('Index page not found within timeout, attempting ESC recovery')
+            for _ in range(5):
+                pyautogui.press('escape')
+                sleep(1)
+            close_popup_recursive()
+            sleep(2)
 
         if calibrate:
             self.log('Calibrating the window')

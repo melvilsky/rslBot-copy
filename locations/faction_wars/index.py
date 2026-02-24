@@ -86,13 +86,25 @@ class FactionWars(Location):
         self._apply_props(props=props)
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-        items = self.results.items()
-        if len(items):
-            progress = '\n'.join(list(map(lambda arr: f"{arr[0]}: {str(arr[1]['commitment'])}keys", items)))
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('faction_wars', profile_name=profile)
+        sub = stats.get('sub', {})
+        if len(sub):
+            progress = '\n'.join([f"{name}: {data.get('commitment', 0)}keys" for name, data in sub.items()])
             res_list.append(progress)
 
         return res_list
+
+    def _persist_faction_stats(self, name):
+        from helpers.battle_stats import update_sub_stats
+        profile = getattr(self.app, 'current_player_name', None)
+        crypt = self.results.get(name, {})
+        update_sub_stats('faction_wars', name, {
+            'commitment': crypt.get('commitment', 0),
+            'completed': crypt.get('completed', False),
+        }, profile_name=profile)
 
     def _enter(self):
         click_on_progress_info()
@@ -232,6 +244,7 @@ class FactionWars(Location):
                 crypt["completed"] = crypt["commitment"] >= crypt["expect"]
 
             self.log('Save crypt result: ' + str(crypt))
+            self._persist_faction_stats(name)
     def _get_result_by_name(self, name):
         return self.results[name]
 

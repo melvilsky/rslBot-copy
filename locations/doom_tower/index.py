@@ -32,7 +32,6 @@ class DoomTower(Location):
         self.keys_golden = 0
         self.keys_silver = 0
         self.current = None
-        self.results = {'bosses': 0, 'floors': 0}
 
         self.event_dispatcher.subscribe('enter', self._enter)
         self.event_dispatcher.subscribe('run', self._run)
@@ -40,14 +39,25 @@ class DoomTower(Location):
         self.apply_props(props=props)
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-
-        if self.results['bosses'] > 0:
-            res_list.append(f"Boss commitment: {str(self.results['bosses'])}")
-        if self.results['floors'] > 0:
-            res_list.append(f"Floors passed: {str(self.results['floors'])}")
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('doom_tower', profile_name=profile)
+        bosses = stats.get('bosses', 0)
+        floors = stats.get('floors', 0)
+        if bosses > 0:
+            res_list.append(f"Boss commitment: {str(bosses)}")
+        if floors > 0:
+            res_list.append(f"Floors passed: {str(floors)}")
 
         return res_list
+
+    def _record_progress(self, key, amount):
+        from helpers.battle_stats import load_stats, update_stats
+        profile = getattr(self.app, 'current_player_name', None)
+        current = load_stats('doom_tower', profile_name=profile)
+        current[key] = current.get(key, 0) + amount
+        update_stats('doom_tower', current, profile_name=profile)
 
     def _enter(self):
         click_on_progress_info()
@@ -177,7 +187,7 @@ class DoomTower(Location):
                             if not pixel_check_new(DoomTower.RESULT_DEFEAT, mistake=30):
                                 dungeons_start()
                                 self.keys_golden -= cost
-                                self.results['floors'] += cost
+                                self._record_progress('floors', cost)
                                 counter += 1
                             else:
                                 # Defeat
@@ -186,7 +196,7 @@ class DoomTower(Location):
                         else:
                             self.log(f"Fake battle: {str(counter)}")
                             self.keys_golden -= cost
-                            self.results['floors'] += cost
+                            self._record_progress('floors', cost)
                             counter += 1
 
                     if not self.FAKE_BATTLE:
@@ -217,12 +227,12 @@ class DoomTower(Location):
                             # Victory
                             if not pixel_check_new(self.RESULT_DEFEAT, mistake=30):
                                 self.keys_silver -= cost
-                                self.results['bosses'] += cost
+                                self._record_progress('bosses', cost)
                                 counter += 1
                         else:
                             self.log(f"Fake Battle: {str(counter)}")
                             self.keys_silver -= cost
-                            self.results['bosses'] += cost
+                            self._record_progress('bosses', cost)
                             counter += 1
 
                     if not self.FAKE_BATTLE:

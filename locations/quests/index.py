@@ -134,14 +134,14 @@ class Quests(Location):
         self.event_dispatcher.subscribe('run', self._run)
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-
-        # Old
-        # if len(self.results):
-        #     res_list.append(f"Completed Daily quest IDs: {str(np.array(self.results, dtype=object))}")
-
-        if len(self.results) or self.completed:
-            res_list.append(f"Daily quests status: {'OK' if self.completed else 'NOT OK'}")
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('quests', profile_name=profile)
+        completed = stats.get('completed', False)
+        quest_count = stats.get('quest_count', 0)
+        if quest_count > 0 or completed:
+            res_list.append(f"Daily quests status: {'OK' if completed else 'NOT OK'}")
 
         return res_list
 
@@ -171,6 +171,12 @@ class Quests(Location):
             self.log("All daily quests are already done")
 
         self.completed = all(element in self.results for element in self.quests_ids)
+        from helpers.battle_stats import update_stats
+        profile = getattr(self.app, 'current_player_name', None)
+        update_stats('quests', {
+            'completed': self.completed,
+            'quest_count': len(self.results),
+        }, profile_name=profile)
 
     def _get_daily_quest_id_by_text(self, text):
         ACCEPT_WEIGHT_MIN = 50

@@ -61,7 +61,6 @@ class IronTwins(Location):
     def __init__(self, app, props=None):
         Location.__init__(self, name='Iron Twins Fortress', app=app, report_predicate=self._report)
 
-        self.results = []
         self.keys = TWIN_KEYS_LIMIT
         self.super_raids_coord = super_raids_coord
         self.super_raids_mistake = super_raids_mistake
@@ -73,13 +72,16 @@ class IronTwins(Location):
         self.event_dispatcher.subscribe('run', self._run)
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-
-        if len(self.results):
-            used = self.results.count(True)
-            attempts = len(self.results)
-            str_used = f"Used: {str(used)}"
-            str_attempts = f"(WR: {calculate_win_rate(used, attempts-used)})"
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('iron_twins_fortress', profile_name=profile)
+        wins = stats.get('wins', 0)
+        losses = stats.get('losses', 0)
+        t = wins + losses
+        if t:
+            str_used = f"Used: {str(wins)}"
+            str_attempts = f"(WR: {calculate_win_rate(wins, losses)})"
             res_list.append(f"{str_used} {str_attempts}")
 
         return res_list
@@ -226,7 +228,12 @@ class IronTwins(Location):
             self.waiting_battle_end_regular(self.NAME)
 
             res = not pixel_check_new(self.RESULT_DEFEAT, mistake=10)
-            self.results.append(res)
+            from helpers.battle_stats import record_win, record_loss
+            profile = getattr(self.app, 'current_player_name', None)
+            if res:
+                record_win('iron_twins_fortress', profile_name=profile)
+            else:
+                record_loss('iron_twins_fortress', profile_name=profile)
             
             # Не устанавливаем completed по количеству побед — с SUPER RAIDS один бой может использовать несколько ключей
             # Завершение работы происходит только когда _check_refill() обнаружит запрос на покупку за рубины

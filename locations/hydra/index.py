@@ -155,20 +155,36 @@ class Hydra(Location):
 
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-        for key, value in self.results.items():
-            part_1 = f'{key} hydra | {value["keys"]} keys used'
-            part_2 = f'{value["damage"]}M dd in {value["counter"]} attempts'
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('hydra', profile_name=profile)
+        sub = stats.get('sub', {})
+        for key, value in sub.items():
+            part_1 = f'{key} hydra | {value.get("keys", 0)} keys used'
+            part_2 = f'{value.get("damage", 0)}M dd in {value.get("counter", 0)} attempts'
             part_3 = ''
 
-            if len(value["results"]):
-                avg = round(sum(value["results"]) / len(value["results"]), 2)
-                part_3 = f'Results: {value["results"]}, Avg: {avg}M'
+            results_list = value.get('results', [])
+            if len(results_list):
+                avg = round(sum(results_list) / len(results_list), 2)
+                part_3 = f'Results: {results_list}, Avg: {avg}M'
 
             line = f"{part_1} | {part_2} | {part_3} \n"
             res_list.append(line)
 
         return res_list
+
+    def _persist_hydra_stats(self, stage):
+        from helpers.battle_stats import update_sub_stats
+        profile = getattr(self.app, 'current_player_name', None)
+        stage_data = self.results.get(stage, {})
+        update_sub_stats('hydra', stage, {
+            'keys': stage_data.get('keys', 0),
+            'damage': stage_data.get('damage', 0),
+            'counter': stage_data.get('counter', 0),
+            'results': stage_data.get('results', []),
+        }, profile_name=profile)
 
     def _enter(self):
         click_on_progress_info()
@@ -196,6 +212,7 @@ class Hydra(Location):
 
         self.results[stage]['keys'] += 1
         self.results[stage]['damage'] += int_damage
+        self._persist_hydra_stats(stage)
 
     def _proceed_end(self):
         stage = self.current['stage']
@@ -209,6 +226,7 @@ class Hydra(Location):
         if 'results' not in self.results[stage]:
             self.results[stage]['results'] = []
         self.results[stage]['results'].append(int_damage)
+        self._persist_hydra_stats(stage)
 
         self.log('Damage Dealt: ' + str(int_damage) + 'M')
         if int_damage >= min_damage:

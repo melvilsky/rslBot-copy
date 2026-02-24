@@ -175,9 +175,6 @@ class ArenaLive(Location):
     def __init__(self, app, props=None):
         Location.__init__(self, name='Arena Live', app=app, report_predicate=self._report)
 
-        if self.results is None:
-            self.results = []
-
         self.pool = []
         self.leaders = []
         self.refill = PAID_REFILL_LIMIT
@@ -312,13 +309,16 @@ class ArenaLive(Location):
         self._click_on_find_opponent()
 
     def _report(self):
+        from helpers.battle_stats import load_stats
         res_list = []
-        t = len(self.results)
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('arena_live', profile_name=profile)
+        wins = stats.get('wins', 0)
+        losses = stats.get('losses', 0)
+        t = wins + losses
         if t:
-            v = self.results.count(True)
-            d = t - v
             str_battles = f"Battles: {str(t)}"
-            str_wr = f"(WR: {calculate_win_rate(v, d)})"
+            str_wr = f"(WR: {calculate_win_rate(wins, losses)})"
             res_list.append(f"{str_battles} {str_wr}")
 
         return res_list
@@ -515,7 +515,12 @@ class ArenaLive(Location):
         return not self.terminated
 
     def _save_result(self, result):
-        self.results.append(result)
+        from helpers.battle_stats import record_win, record_loss
+        profile = getattr(self.app, 'current_player_name', None)
+        if result:
+            record_win('arena_live', profile_name=profile)
+        else:
+            record_loss('arena_live', profile_name=profile)
         result_msg = 'WIN' if result else 'DEFEAT'
         self.log(result_msg)
 
