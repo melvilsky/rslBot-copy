@@ -145,6 +145,10 @@ battle_start_turn = [341, 74, [86, 191, 255]]
 PAID_REFILL_LIMIT = 1
 ARCHIVE_PATTERN_FIRST = [1, 2, 2]
 
+# Сундук прогресса (награда за 35 побед) — попап появляется после нажатия "поиск соперника"
+PROGRESS_CHEST = [483, 226, [109, 50, 42]]
+PROGRESS_CHEST_MISTAKE = 25
+
 # @TODO Can be useful
 error_dialog_button_left = [357, 287, [22, 124, 156]]
 error_dialog_button_right = [550, 291, [22, 124, 156]]
@@ -399,6 +403,39 @@ class ArenaLive(Location):
             y = claim_chest[1]
             claim_rewards(x, y)
 
+    def _check_progress_chest(self):
+        """
+        Проверяет попап сундука прогресса (награда за 35 побед) после нажатия "поиск соперника".
+        Попап перекрывает экран поиска — если он есть, нужно забрать награду и запустить поиск заново.
+        Returns True если сундук был найден и обработан, False если сундука нет.
+        """
+        x = PROGRESS_CHEST[0]
+        y = PROGRESS_CHEST[1]
+        expected_rgb = PROGRESS_CHEST[2]
+
+        if is_debug_mode():
+            try:
+                actual_pixel = pyautogui.pixel(x, y)
+                actual_rgb = [actual_pixel[0], actual_pixel[1], actual_pixel[2]]
+                from helpers.common import rgb_check
+                matches = rgb_check(actual_rgb, expected_rgb, mistake=PROGRESS_CHEST_MISTAKE)
+                self.log(f"DEBUG progress_chest check: [{x}, {y}] expected={expected_rgb} actual={actual_rgb} match={matches}")
+            except Exception as e:
+                self.log(f"ERROR progress_chest debug pixel read: {e}")
+
+        found = pixel_check_new(PROGRESS_CHEST, mistake=PROGRESS_CHEST_MISTAKE, label='progress_chest')
+
+        if found:
+            self.log(f"Progress chest detected at ({x}, {y}) — claiming reward")
+            if is_debug_mode():
+                debug_save_screenshot(suffix_name='live-arena-progress-chest-found')
+            click(x, y)
+            sleep(2)
+            tap_to_continue(wait_before=1, wait_after=1)
+            return True
+
+        return False
+
     def _claim_free_refill_coins(self):
         from helpers.common import pixel_check_new
         
@@ -486,6 +523,12 @@ class ArenaLive(Location):
         self._click_on_find_opponent()
 
         sleep(1)
+
+        # Попап сундука прогресса (35 побед) перекрывает экран поиска — проверяем и забираем
+        if self._check_progress_chest():
+            self._click_on_find_opponent()
+            sleep(1)
+
         ruby_button = find_needle_refill_ruby()
 
         if ruby_button is not None:
