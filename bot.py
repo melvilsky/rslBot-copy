@@ -21,11 +21,13 @@ class TelegramBOT(threading.Thread, Foundation):
                 {
                     'command': 'start',
                     'description': 'Start the bot',
+                    'category': 'Инфо',
                     'handler': {'type': 'message', 'callback': self._start}
                 },
                 {
                     'command': 'help',
                     'description': 'Show available commands',
+                    'category': 'Инфо',
                     'handler': {'type': 'message', 'callback': self._help}
                 },
             ]
@@ -67,16 +69,40 @@ class TelegramBOT(threading.Thread, Foundation):
             #         log_save(error)
 
     def _all_commands(self):
-        commands = list(map(lambda x: f"/{x['command']} - {x['description']}", self.commands))
-        return '\n\n'.join(commands)
+        # Group commands by category
+        groups = {}
+        order = []
+        for cmd in self.commands:
+            cat = cmd.get('category', 'Прочее')
+            if cat not in groups:
+                groups[cat] = []
+                order.append(cat)
+            groups[cat].append(f"/{cmd['command']} — {cmd['description']}")
+
+        CATEGORY_ICONS = {
+            'Управление':   '⚙️',
+            'Игровые':      '🎮',
+            'Профили':      '👤',
+            'Запись':       '🔴',
+            'Инфо':         '📋',
+            'Прочее':       '•',
+        }
+
+        lines = []
+        for cat in order:
+            icon = CATEGORY_ICONS.get(cat, '•')
+            lines.append(f"{icon} <b>{cat}</b>")
+            lines.append('\n'.join(groups[cat]))
+            lines.append('')
+        return '\n'.join(lines).strip()
 
     def _start(self, update: Updater, context: CallbackContext) -> None:
-        message = 'Hello! I am your bot. Here are some available commands:\n\n' + self._all_commands()
-        update.message.reply_text(message)
+        message = '👋 Привет! Доступные команды:\n\n' + self._all_commands()
+        update.message.reply_text(message, parse_mode='HTML')
 
     def _help(self, update: Updater, context: CallbackContext) -> None:
-        message = self._all_commands()
-        update.message.reply_text(message)
+        update.message.reply_text(self._all_commands(), parse_mode='HTML')
+
 
     def add(self, obj):
         self.commands.append(obj)

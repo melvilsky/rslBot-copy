@@ -290,45 +290,55 @@ class App(Foundation):
         return {
             'restart': {
                 'description': 'Re-Start the Game',
+                'category': 'Управление',
                 'handler': self.task('restart', self.restart, task_type='aside'),
             },
             'launch': {
                 'description': 'Re-Launch the Game',
+                'category': 'Управление',
                 'handler': self.task('launch', self.launch, task_type='aside'),
             },
             # @TODO Does not work properly when it's running right after bot starts
             'relogin': {
                 'description': 'Re-log in',
+                'category': 'Управление',
                 'handler': self.task('relogin', self.relogin, task_type='aside'),
             },
             'prepare': {
                 'description': 'Prepares the Game window',
+                'category': 'Управление',
                 'handler': self.task('prepare', lambda *args: self.prepare(calibrate=False), task_type='sync'),
             },
             'screen': {
                 'description': 'Capture and send a screenshot',
+                'category': 'Управление',
                 'handler': self.task('screen', self._screenshot, task_type='sync'),
             },
             'click': {
                 'description': 'Click by provided coordinates: x, y',
+                'category': 'Управление',
                 'handler': self.task('click', self._click, task_type='sync'),
             },
             'stop': {
                 'description': 'Terminates instances and clears the queue',
+                'category': 'Управление',
                 'handler': self.task('stop', self._stop, task_type='sync'),
             },
             'report': {
                 'description': 'Report',
+                'category': 'Управление',
                 'handler': self.task('report', self.report, task_type='sync'),
             },
             'record_on': {
                 'description': 'Start recording clicks',
+                'category': 'Запись',
                 'handler': lambda upd, ctx: upd.message.reply_text(
                     self.recorder.start() if self.recorder else "Recorder unavailable (pynput not installed)"
                 ),
             },
             'record_off': {
                 'description': 'Stop recording and show results',
+                'category': 'Запись',
                 'handler': lambda upd, ctx: upd.message.reply_text(
                     self.recorder.stop() if self.recorder else "Recorder unavailable (pynput not installed)"
                 ),

@@ -71,6 +71,7 @@ def main():
                 telegram_bot.add({
                     'command': 'checkupdate',
                     'description': 'Проверить наличие обновлений',
+                    'category': 'Инфо',
                     'handler': lambda upd, ctx: upd.message.reply_text(app.check_update_status(telegram_bot=telegram_bot), parse_mode='HTML')
                 })
                 
@@ -78,6 +79,7 @@ def main():
                 telegram_bot.add({
                     'command': 'update',
                     'description': 'Обновить приложение до последней версии',
+                    'category': 'Инфо',
                     'handler': lambda upd, ctx: upd.message.reply_text(app.perform_update(telegram_bot=telegram_bot))
                 })
                 
@@ -85,6 +87,7 @@ def main():
                 telegram_bot.add({
                     'command': 'clearchat',
                     'description': 'Очистить чат от сообщений бота',
+                    'category': 'Управление',
                     'handler': lambda upd, ctx: upd.message.reply_text(app.clear_chat(update=upd, context=ctx, telegram_bot=telegram_bot))
                 })
 
@@ -97,6 +100,7 @@ def main():
                     telegram_bot.add({
                         'command': command_name,
                         'description': command_data['description'],
+                        'category': command_data.get('category', 'Управление'),
                         'handler': command_data['handler'],
                     })
 
@@ -106,6 +110,7 @@ def main():
                         regular_command = list(map(lambda task: {
                             'command': task['command'],
                             'description': f"command '{task['title']}'",
+                            'category': 'Игровые',
                             'handler': app.task(
                                 name=task['command'],
                                 cb=app.get_entry(command_name=task['command'])['instance'].run
@@ -126,6 +131,7 @@ def main():
                         presets_commands = list(map(lambda preset: {
                             'command': make_command_key(f"preset {preset['name']}"),
                             'description': f"commands in a row: {', '.join(preset['commands'])}",
+                            'category': 'Игровые',
                             'handler': lambda upd, ctx, p=preset: process_preset_commands(upd, ctx, p),
                             'track': True,
                         }, app.config['presets']))
@@ -180,6 +186,7 @@ def main():
                     telegram_bot.add({
                         'command': 'loadconfig',
                         'description': 'Выбрать и загрузить конфиг из папки profiles',
+                        'category': 'Профили',
                         'handler': loadconfig_cmd,
                     })
                     telegram_bot.dp.add_handler(CallbackQueryHandler(loadconfig_callback, run_async=True))
