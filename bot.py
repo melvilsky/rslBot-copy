@@ -1,4 +1,5 @@
 import threading
+from collections import deque
 from helpers.common import log, log_save, save_last_chat_id
 import traceback
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler
@@ -38,6 +39,7 @@ class TelegramBOT(threading.Thread, Foundation):
             self.dp = self.updater.dispatcher
             self._task_handlers = []  # handlers for task/preset commands (for replacement on profile switch)
             self._task_command_names = []  # command names of tracked entries (to remove from self.commands on profile switch)
+            self._chat_messages = {}  # chat_id -> deque of bot message_ids for /clearchat
 
             # Register the /start command
             for i in range(len(self.commands)):
@@ -96,12 +98,31 @@ class TelegramBOT(threading.Thread, Foundation):
             lines.append('')
         return '\n'.join(lines).strip()
 
+    def _record_message(self, chat_id, message_id):
+        """Track a bot-sent message ID for later deletion by /clearchat."""
+        if chat_id not in self._chat_messages:
+            self._chat_messages[chat_id] = deque(maxlen=1000)
+        self._chat_messages[chat_id].append(message_id)
+
+    def get_and_clear_messages(self, chat_id):
+        """Return all tracked message IDs for chat_id and clear the list."""
+        ids = list(self._chat_messages.get(chat_id, []))
+        if chat_id in self._chat_messages:
+            self._chat_messages[chat_id].clear()
+        return ids
+
     def _start(self, update: Updater, context: CallbackContext) -> None:
-        message = '👋 Привет! Доступные команды:\n\n' + self._all_commands()
-        update.message.reply_text(message, parse_mode='HTML')
+        chat_id = update.effective_chat.id
+        text = '👋 Привет! Доступные команды:\n\n' + self._all_commands()
+        msg = update.message.reply_text(text, parse_mode='HTML')
+        if msg:
+            self._record_message(chat_id, msg.message_id)
 
     def _help(self, update: Updater, context: CallbackContext) -> None:
-        update.message.reply_text(self._all_commands(), parse_mode='HTML')
+        chat_id = update.effective_chat.id
+        msg = update.message.reply_text(self._all_commands(), parse_mode='HTML')
+        if msg:
+            self._record_message(chat_id, msg.message_id)
 
 
     def add(self, obj):
@@ -129,8 +150,20 @@ class TelegramBOT(threading.Thread, Foundation):
             log(f"Starting the command: {command}")
             try:
                 update = args[0]
+                chat_id = None
                 if getattr(update, 'effective_chat', None) is not None:
-                    save_last_chat_id(update.effective_chat.id)
+                    chat_id = update.effective_chat.id
+                    save_last_chat_id(chat_id)
+                # Track user's command message & wrap reply_text to capture bot replies
+                if chat_id and getattr(update, 'message', None):
+                    self._record_message(chat_id, update.message.message_id)
+                    _orig_reply = update.message.reply_text
+                    def _tracked_reply(*a, _orig=_orig_reply, _cid=chat_id, **kw):
+                        m = _orig(*a, **kw)
+                        if m and hasattr(m, 'message_id'):
+                            self._record_message(_cid, m.message_id)
+                        return m
+                    update.message.reply_text = _tracked_reply
             except Exception:
                 pass
             handler(*args)

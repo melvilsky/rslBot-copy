@@ -614,105 +614,53 @@ class App(Foundation):
             log_save(traceback.format_exc())
             return error_msg
 
-    def clear_chat(self, update=None, context=None, telegram_bot=None, limit=100):
+    def clear_chat(self, update=None, context=None, telegram_bot=None):
         """
-        Очищает чат от сообщений бота
-        Удаляет последние N сообщений бота из чата
-        
-        Args:
-            update: Telegram update object (если вызывается из команды)
-            context: Telegram context object
-            telegram_bot: Telegram bot object (если вызывается напрямую)
-            limit: Максимальное количество сообщений для проверки
+        Удаляет все отслеживаемые сообщения бота в чате, затем отправляет /help.
+        Трекинг ведётся в bot.py через monkey-patch reply_text.
         """
         try:
-            # Определяем chat_id и bot
-            chat_id = None
-            bot = None
-            
-            if update and update.message:
-                chat_id = update.message.chat_id
-                bot = context.bot if context else None
-            elif telegram_bot and hasattr(telegram_bot, 'updater'):
-                bot = telegram_bot.updater.bot
-                # Пытаемся получить chat_id из последних обновлений
-                try:
-                    updates = bot.get_updates(limit=10)
-                    for upd in updates:
-                        if upd.message and upd.message.chat_id:
-                            chat_id = upd.message.chat_id
-                            break
-                except Exception as e:
-                    self.log(f"Error getting chat_id: {e}")
-            else:
-                return "❌ Бот не доступен"
-            
-            if not chat_id:
-                return "❌ Чат не найден. Отправьте боту любое сообщение и попробуйте снова."
-            
-            if not bot:
-                return "❌ Бот не доступен"
-            
-            self.log(f"Clearing chat {chat_id}, limit: {limit}")
-            
+            if not update or not update.message:
+                return
+            chat_id = update.message.chat_id
+            bot = context.bot
+
+            # Добавляем сюда и саму команду /clearchat чтобы тоже удалить её
+            if telegram_bot:
+                telegram_bot._record_message(chat_id, update.message.message_id)
+
+            message_ids = []
+            if telegram_bot:
+                message_ids = telegram_bot.get_and_clear_messages(chat_id)
+
+            self.log(f"Clearing chat {chat_id}: {len(message_ids)} tracked messages")
+
             deleted_count = 0
-            current_message_id = update.message.message_id if update and update.message else None
-            
-            # Получаем обновления для поиска сообщений бота
-            try:
-                # Получаем последние обновления
-                updates = bot.get_updates(limit=limit)
-                message_ids = []
-                
-                for upd in updates:
-                    if upd.message:
-                        msg = upd.message
-                        # Проверяем, что сообщение от бота и в нужном чате
-                        if (msg.chat_id == chat_id and 
-                            msg.from_user and 
-                            msg.from_user.is_bot and
-                            msg.message_id != current_message_id):  # Не удаляем текущее сообщение команды
-                            message_ids.append(msg.message_id)
-                
-                # Удаляем сообщения (от новых к старым)
-                message_ids.sort(reverse=True)
-                
-                for msg_id in message_ids:
-                    try:
-                        bot.delete_message(
-                            chat_id=chat_id,
-                            message_id=msg_id
-                        )
-                        deleted_count += 1
-                        sleep(0.05)  # Небольшая задержка чтобы не превысить rate limit
-                    except BadRequest as e:
-                        # Сообщение уже удалено или недоступно (старше 48 часов)
-                        error_str = str(e).lower()
-                        if "message to delete not found" not in error_str and "message can't be deleted" not in error_str:
-                            self.log(f"Error deleting message {msg_id}: {e}")
-                    except Exception as e:
-                        self.log(f"Error deleting message {msg_id}: {e}")
-                
-                if deleted_count > 0:
-                    result = f"✅ Удалено сообщений: {deleted_count}"
-                    self.log(result)
-                    return result
-                else:
-                    return "ℹ️ Сообщения для удаления не найдены (или старше 48 часов)"
-                    
-            except Exception as e:
-                error_msg = f"❌ Ошибка при очистке чата: {e}"
-                self.log(error_msg)
-                import traceback
-                log_save(traceback.format_exc())
-                return error_msg
-                
+            for msg_id in sorted(message_ids, reverse=True):
+                try:
+                    bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                    deleted_count += 1
+                    sleep(0.04)
+                except Exception:
+                    pass  # уже удалено, старше 48ч или пользовательское — ок
+
+            self.log(f"Deleted {deleted_count} messages")
+
+            # Отправляем /help после очистки
+            if telegram_bot:
+                msg = bot.send_message(
+                    chat_id=chat_id,
+                    text=telegram_bot._all_commands(),
+                    parse_mode='HTML'
+                )
+                if msg:
+                    telegram_bot._record_message(chat_id, msg.message_id)
+
         except Exception as e:
-            error_msg = f"❌ Ошибка: {e}"
-            self.log(error_msg)
             import traceback
-            traceback.print_exc()
-            return error_msg
+            self.log(f"clear_chat error: {e}")
+            log_save(traceback.format_exc())
+
 
     def perform_update(self, telegram_bot=None):
         """
