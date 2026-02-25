@@ -5,7 +5,7 @@ import os
 import json
 from PIL import Image, ImageDraw
 
-from helpers.common import is_debug_mode
+from helpers.common import is_debug_mode, log_save
 from helpers.time_mgr import *
 from helpers.refill_state import get_remaining_refills, increment_purchase
 from locations.hero_filter.index import *
@@ -32,7 +32,7 @@ def load_live_arena_coordinates():
             # Если файл не найден, возвращаем None (будем использовать дефолтные значения)
             return None
     except Exception as e:
-        print(f"Ошибка загрузки координат из {coords_path}: {e}")
+        log_save(f"Ошибка загрузки координат из {coords_path}: {e}")
         return None
 
 # Загружаем координаты при импорте модуля
@@ -61,7 +61,7 @@ def get_coordinate(key):
     
     coord = _coordinates_data[key]
     result = [coord['x'], coord['y'], coord['rgb']]
-    print(f"Loaded coordinate '{key}' from JSON: {result}")
+    log_save(f"Loaded coordinate '{key}' from JSON: {result}")
     return result
 
 def get_coordinate_mistake(key, default_mistake=20):
