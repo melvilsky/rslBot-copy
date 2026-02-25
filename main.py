@@ -137,7 +137,7 @@ def main():
                         presets_commands = list(map(lambda preset: {
                             'command': make_command_key(f"preset {preset['name']}"),
                             'description': f"commands in a row: {', '.join(preset['commands'])}",
-                            'category': 'Игровые',
+                            'category': 'Пресеты',
                             'handler': lambda upd, ctx, p=preset: process_preset_commands(upd, ctx, p),
                             'track': True,
                         }, app.config['presets']))

@@ -84,6 +84,7 @@ class TelegramBOT(threading.Thread, Foundation):
         CATEGORY_ICONS = {
             'Управление':   '⚙️',
             'Игровые':      '🎮',
+            'Пресеты':      '📌',
             'Профили':      '👤',
             'Запись':       '🔴',
             'Инфо':         '📋',
