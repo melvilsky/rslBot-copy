@@ -379,18 +379,6 @@ class App(Foundation):
         if _config['debug']:
             self.log("Debug mode enabled from config")
 
-        # Очистка старых debug-данных и логов при каждом запуске
-        # Любые ошибки здесь не должны ломать старт приложения
-        try:
-            cleanup_debug_data(max_days=7, max_total_mb=500)
-            cleanup_old_logs(max_days=30)
-        except Exception as e:
-            try:
-                log_save(f"Debug/log cleanup failed: {e}")
-            except Exception:
-                # Даже логирование ошибки не должно мешать запуску
-                pass
-
         if 'start_immediate' in config_json:
             _config['start_immediate'] = bool(config_json['start_immediate'])
 

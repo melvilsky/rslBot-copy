@@ -123,9 +123,11 @@ if not logger.handlers:
     c_handler.setFormatter(c_format)
     logger.addHandler(c_handler)
 
-    # File Handler
+    # File Handler — пишем в папку logs/
     try:
-        log_filename = f"log-{datetime.now().strftime('%Y-%m-%d')}.txt"
+        logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+        log_filename = os.path.join(logs_dir, f"log-{datetime.now().strftime('%Y-%m-%d')}.txt")
         f_handler = RotatingFileHandler(log_filename, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
         f_handler.setFormatter(c_format)
         logger.addHandler(f_handler)
@@ -133,92 +135,6 @@ if not logger.handlers:
         print(f"Failed to setup log file handler: {e}")
 
 
-def cleanup_debug_data(max_days=7, max_total_mb=500):
-    """
-    Удаляет старые debug-файлы (скриншоты, изображения) из каталога debug/.
-    Сначала удаляет всё старше max_days, затем, если суммарный размер оставшихся файлов
-    превышает max_total_mb, удаляет самые старые до достижения лимита.
-    Вызывать один раз при старте приложения.
-    """
-    debug_dir = Path('debug')
-    if not debug_dir.exists():
-        return
-
-    now = time.time()
-    max_age_seconds = max_days * 86400
-    max_total_bytes = max_total_mb * 1024 * 1024
-
-    all_files = [f for f in debug_dir.rglob('*') if f.is_file()]
-    if not all_files:
-        return
-
-    deleted_count = 0
-    freed_bytes = 0
-
-    for f in all_files:
-        try:
-            age = now - f.stat().st_mtime
-            if age > max_age_seconds:
-                size = f.stat().st_size
-                f.unlink()
-                deleted_count += 1
-                freed_bytes += size
-        except Exception:
-            pass
-
-    remaining = [f for f in debug_dir.rglob('*') if f.is_file()]
-    total_size = sum(f.stat().st_size for f in remaining)
-
-    if total_size > max_total_bytes:
-        remaining.sort(key=lambda f: f.stat().st_mtime)
-        for f in remaining:
-            if total_size <= max_total_bytes:
-                break
-            try:
-                size = f.stat().st_size
-                f.unlink()
-                total_size -= size
-                deleted_count += 1
-                freed_bytes += size
-            except Exception:
-                pass
-
-    if deleted_count > 0:
-        freed_mb = freed_bytes / (1024 * 1024)
-        logger.info(f"Debug cleanup: removed {deleted_count} file(s), freed {freed_mb:.1f} MB")
-
-
-def cleanup_old_logs(max_days=30):
-    """
-    Удаляет лог-файлы log-*.txt* старше max_days из рабочего каталога.
-    RotatingFileHandler создаёт файлы вида log-YYYY-MM-DD.txt, log-YYYY-MM-DD.txt.1, etc.
-    Вызывать один раз при старте приложения.
-    """
-    now = time.time()
-    max_age_seconds = max_days * 86400
-
-    log_files = glob.glob('log-*.txt*')
-    if not log_files:
-        return
-
-    deleted_count = 0
-    freed_bytes = 0
-
-    for f_path in log_files:
-        try:
-            p = Path(f_path)
-            age = now - p.stat().st_mtime
-            if age > max_age_seconds:
-                size = p.stat().st_size
-                p.unlink()
-                deleted_count += 1
-                freed_bytes += size
-        except Exception:
-            pass
-
-    if deleted_count > 0:
-        freed_mb = freed_bytes / (1024 * 1024)
-        logger.info(f"Log cleanup: removed {deleted_count} file(s), freed {freed_mb:.1f} MB")
 
 
 def log_save(message):
