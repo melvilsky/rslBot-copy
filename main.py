@@ -52,19 +52,21 @@ def main():
             if app.config['start_immediate']:
                 app.start()
                 # print('App is started')
-                # sleep(5)
                 # app.get_instance('arena_live').attack()
 
             if has_telegram_token:
+                log('[startup] Creating TelegramBOT...')
                 telegram_bot = TelegramBOT({
                     'token': app.config['telegram_token']
                 })
                 telegram_bot.start()
+                log('[startup] TelegramBOT started')
                 
                 # Устанавливаем ссылку на бота в app для доступа из методов
                 app.telegram_bot = telegram_bot
                 
                 # Проверяем обновления при запуске
+                log('[startup] Checking for updates...')
                 app.check_for_updates(telegram_bot=telegram_bot)
                 
                 # Добавляем команду /checkupdate
@@ -91,8 +93,10 @@ def main():
                     'handler': lambda upd, ctx: app.clear_chat(update=upd, context=ctx, telegram_bot=telegram_bot)
                 })
 
+                log('[startup] Registering base commands (checkupdate, update, clearchat)...')
                 commands_to_apply = copy.copy(app.COMMANDS_GAME_PATH_DEPENDANT) if game_path else []
                 commands_to_apply += app.COMMANDS_COMMON
+                log(f'[startup] Registering app commands: {commands_to_apply}')
 
                 for i in range(len(commands_to_apply)):
                     command_name = commands_to_apply[i]
@@ -104,9 +108,11 @@ def main():
                         'handler': command_data['handler'],
                     })
 
+                log('[startup] Registering task/preset commands...')
                 def register_task_preset_commands():
                     regular_command = []
                     if len(app.config['tasks']):
+                        log(f"[startup] Building {len(app.config['tasks'])} task command(s)...")
                         regular_command = list(map(lambda task: {
                             'command': task['command'],
                             'description': f"command '{task['title']}'",
@@ -140,7 +146,9 @@ def main():
                         telegram_bot.add(c)
 
                 register_task_preset_commands()
+                log('[startup] Task/preset commands registered')
 
+                log('[startup] Setting up loadconfig...')
                 def loadconfig_cmd(upd, ctx):
                     if not has_profile_mode():
                         upd.message.reply_text('Режим профилей не активен (нет папки profiles с .json).')
@@ -207,6 +215,7 @@ def main():
                             except Exception:
                                 pass
 
+                log('[startup] Starting bot polling (listen)...')
                 telegram_bot.listen()
                 telegram_bot.updater.idle()
 

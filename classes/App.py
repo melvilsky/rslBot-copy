@@ -224,9 +224,13 @@ class App(Foundation):
         # self.storage = Storage(name='storage', folder='temp')
 
         # Order is matters
+        self.log('[init] Reading config...')
         self.read_config()
+        self.log('[init] Loading translations...')
         self.load_translations()
+        self.log('[init] Building commands...')
         self.commands = self.get_commands()
+        self.log('[init] App instance ready')
 
         self.INDEX_PAGE_DETECTED = {
             'name': "Index+",
