@@ -172,23 +172,40 @@ def main():
                     try:
                         i = int(idx)
                         if i < 0 or i >= len(names):
-                            query.edit_message_text(text='Профиль не найден.')
+                            try:
+                                query.edit_message_text(text='Профиль не найден.')
+                            except Exception:
+                                pass
                             return
                     except ValueError:
-                        query.edit_message_text(text='Неверные данные.')
+                        try:
+                            query.edit_message_text(text='Неверные данные.')
+                        except Exception:
+                            pass
                         return
                     name = names[i]
                     try:
+                        log(f'[loadconfig] Loading profile: {name}')
                         app.load_profile_by_name(name)
                         telegram_bot.remove_task_handlers()
                         register_task_preset_commands()
                         pid = getattr(app, 'current_player_id', None)
-                        if pid:
-                            query.edit_message_text(text=f'Игрок {name} ({pid}) загружен и готов к работе.')
-                        else:
-                            query.edit_message_text(text=f'Конфиг {name} загружен и готов к работе.')
+                        msg = f'Игрок {name} ({pid}) загружен и готов к работе.' if pid else f'Конфиг {name} загружен и готов к работе.'
+                        log(f'[loadconfig] {msg}')
+                        try:
+                            query.edit_message_text(text=msg)
+                        except Exception:
+                            # Сообщение могло быть удалено через /clearchat — отправляем новое
+                            ctx.bot.send_message(chat_id=query.message.chat_id, text=msg)
                     except Exception as e:
-                        query.edit_message_text(text=f'Ошибка загрузки: {e}')
+                        import traceback
+                        err = traceback.format_exc()
+                        log_save(f'[loadconfig] Error loading profile {name}: {err}')
+                        try:
+                            query.edit_message_text(text=f'Ошибка загрузки: {e}')
+                        except Exception:
+                            ctx.bot.send_message(chat_id=query.message.chat_id, text=f'Ошибка загрузки: {e}')
+
 
                 if has_profile_mode():
                     telegram_bot.add({

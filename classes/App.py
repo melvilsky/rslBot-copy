@@ -828,17 +828,22 @@ class App(Foundation):
     def _load_profile_file(self, filename_no_ext):
         """
         Загружает конфиг из profiles/<filename_no_ext>.json.
-        Очищает task entries и применяет _prepare_config. Устанавливает current_player_name и current_player_id.
+        Полностью сбрасывает entries и применяет _prepare_config.
+        Устанавливает current_player_name и current_player_id.
         """
         path = os.path.join(PROFILES_DIR, filename_no_ext + '.json')
         if not os.path.isfile(path):
             raise FileNotFoundError(path)
         with open(path, encoding='utf-8') as f:
             config_json = json.load(f)
-        for task_d in (self.config or {}).get('tasks', []):
-            cmd = task_d.get('command')
-            if cmd and cmd in self.entries:
-                del self.entries[cmd]
+
+        # Полностью сбрасываем entries чтобы _prepare_config не кидал 'already exist'
+        # (предыдущий код удалял только entries из tasks текущего конфига,
+        # что не работало если профиль содержит те же tasks что и дефолтный конфиг)
+        cleared = len(self.entries)
+        self.entries = {}
+        self.log(f'[loadconfig] Cleared {cleared} entries before loading profile: {filename_no_ext}')
+
         self.config = self._prepare_config(config_json)
         self.current_player_name = filename_no_ext
         self.current_player_id = config_json.get('player_id') if isinstance(config_json.get('player_id'), str) else None
