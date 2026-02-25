@@ -428,9 +428,9 @@ class App(Foundation):
                                 'instance': INSTANCES_MAP[_task](app=self, props=_props),
                             }
                         else:
-                            raise f"No {_task} among all instances"
+                            raise Exception(f"No {_task} among all instances")
                     else:
-                        raise f"{_command} is already exist, please provide the different"
+                        raise Exception(f"{_command} is already exist, please provide the different")
 
                     _config['tasks'].append(task_d)
 
@@ -1096,7 +1096,7 @@ class App(Foundation):
         elif game_path:
             self.launch()
         else:
-            raise "No 'game_path' provided field in the config"
+            raise Exception("No 'game_path' provided field in the config")
 
     def launch(self, *args):
         game_path = self.config['game_path']
