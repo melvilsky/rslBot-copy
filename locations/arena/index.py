@@ -643,7 +643,22 @@ class ArenaFactory(Location):
                     sleep(2)
                     if pixel_check_new([x, y, ATTACK_BUTTON_RGB], mistake=10, label="back_to_list_check"):
                         self.log('Back at list (battle did not start after closing refill dialog) — skipping wait')
-                        break
+                        continue
+
+                # User requested check: verify if the Start Battle button is still present
+                start_battle_check_coord = [792, 508]
+                start_battle_check_color = [175, 114, 0]
+                
+                if pixel_check_new([start_battle_check_coord[0], start_battle_check_coord[1], start_battle_check_color], mistake=15, label="start_battle_still_present"):
+                    self.log('Start battle button is still present, clicking it again')
+                    click_on_start()
+                    sleep(2)
+                    
+                    if pixel_check_new([start_battle_check_coord[0], start_battle_check_coord[1], start_battle_check_color], mistake=15, label="start_battle_still_present_after_retry"):
+                        self.log('Start battle button is STILL present after retry, battle did not start — skipping wait')
+                        continue
+                else:
+                    self.log('Start battle button is no longer present, proceeding')
 
                 self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
                 if is_debug_mode():
