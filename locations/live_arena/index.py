@@ -527,7 +527,7 @@ class ArenaLive(Location):
     def _refill(self):
         self._click_on_find_opponent()
 
-        sleep(1)
+        sleep(3)
 
         # Попап сундука прогресса (35 побед) перекрывает экран поиска — проверяем и забираем
         if self._check_progress_chest():
