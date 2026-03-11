@@ -208,6 +208,7 @@ class ArenaFactory(Location):
         self.initial_refresh = False
         self.battle_time_limit = True
         self.max_swipe = 0
+        self.classic_defeat_offset = 0
 
         self._apply_props(props=props)
 
@@ -286,6 +287,13 @@ class ArenaFactory(Location):
             MAX_NO_PROGRESS_ITERATIONS = 3
 
             while self.terminated is False:
+                if self.classic_defeat_offset >= len(self.item_locations):
+                    self.log(f'All positions exhausted (offset={self.classic_defeat_offset}), forcing refresh')
+                    self._refresh_arena()
+                    no_progress_iterations = 0
+                    last_results_count = 0
+                    continue
+
                 self.attack()
 
                 last_results = self._get_last_results()
@@ -340,9 +348,11 @@ class ArenaFactory(Location):
             self.log(f'Refresh button wait timeout ({ARENA_REFRESH_WAIT_LIMIT}s), stopping')
             self.terminated = True
             return
-        
-        # После рефреша в Arena Tag нужно скроллить вверх для возврата в начало списка
-        # (список может остаться в позиции после последнего боя)
+
+        if self.classic_defeat_offset > 0:
+            self.log(f'Refresh: resetting defeat offset (was {self.classic_defeat_offset})')
+            self.classic_defeat_offset = 0
+
         if self.name == 'Arena Tag':
             _sr = swipe_refresh_coord
             self.log('Scrolling up after refresh to return to list start')
@@ -579,15 +589,28 @@ class ArenaFactory(Location):
         results_local = []
         _sa = swipe_attack_coord
 
-        for i in range(len(self.item_locations)):
+        start_index = self.classic_defeat_offset
+        swipes_done = 0
+
+        if start_index > 0:
+            initial_swipes = min(self.item_locations[start_index]['swipes'], self.max_swipe)
+            self.log(f'Scrolling past defeated opponents (offset={start_index}, swipes={initial_swipes})')
+            for _ in range(initial_swipes):
+                swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
+                sleep(0.3)
+            swipes_done = initial_swipes
+
+        for i in range(start_index, len(self.item_locations)):
             if self.terminated:
                 break
 
             el = self.item_locations[i]
             position = el['position']
+            target_swipes = el['swipes']
 
-            if 0 < i <= self.max_swipe:
+            while swipes_done < target_swipes:
                 swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
+                swipes_done += 1
 
             pos = self.button_locations[position]
             x = pos[0]
@@ -601,7 +624,7 @@ class ArenaFactory(Location):
                 click(start_battle_coord[0], start_battle_coord[1], smart=True)
                 sleep(0.5)
 
-            is_not_attacked = len(results_local) - 1 < i
+            is_not_attacked = len(results_local) - 1 < (i - start_index)
             if is_debug_mode():
                 debug_save_screenshot(suffix_name=f"classic-before-attack-pos{position}-i{i}")
             if pixel_check_new([x, y, ATTACK_BUTTON_RGB], label=f"attack_button_pos{position}") and is_not_attacked:
@@ -667,6 +690,10 @@ class ArenaFactory(Location):
                 results_local.append(res)
                 result_name = 'VICTORY' if res else 'DEFEAT'
                 self.log(result_name)
+
+                if not res:
+                    self.classic_defeat_offset = i + 1
+                    self.log(f'Defeat at position {i}, next pass will start from offset {self.classic_defeat_offset}')
 
                 tap_to_continue(times=2, wait_after=3)
                 sleep(2)
