@@ -17,6 +17,7 @@
     --danger: #ff6b6b;
     --warning: #ffc048;
     --log-bg: #12141c;
+    --result-bg: #111420;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -130,6 +131,128 @@ header h1 {
     margin-top: 4px;
 }
 
+/* ── Results Panel ── */
+.results-section {
+    margin-top: 32px;
+}
+
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.results-header h2 {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.results-clear-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.results-clear-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+#results-output {
+    background: var(--result-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    min-height: 60px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+#results-output:empty::before {
+    content: 'Результаты команд появятся здесь...';
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
+.result-item {
+    padding: 12px;
+    margin-bottom: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.result-item .result-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.result-item .result-cmd {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.result-item .result-time {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.result-item .result-text {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.result-item img {
+    max-width: 100%;
+    border-radius: 6px;
+    margin-top: 8px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.result-item img:hover {
+    transform: scale(1.02);
+}
+
+/* ── Image Lightbox ── */
+.lightbox-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    cursor: zoom-out;
+}
+
+.lightbox-overlay.active {
+    display: flex;
+}
+
+.lightbox-overlay img {
+    max-width: 95vw;
+    max-height: 95vh;
+    border-radius: 8px;
+    box-shadow: 0 0 40px rgba(0,0,0,0.6);
+}
+
+/* ── Logs Panel ── */
 .log-section {
     margin-top: 32px;
 }
@@ -163,7 +286,7 @@ header h1 {
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 12px;
-    height: 300px;
+    height: 250px;
     overflow-y: auto;
     font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
     font-size: 0.8rem;
@@ -256,6 +379,16 @@ header h1 {
     </div>
     {% endfor %}
 
+    <!-- Results Panel -->
+    <div class="results-section">
+        <div class="results-header">
+            <h2>Результаты</h2>
+            <button class="results-clear-btn" onclick="clearResults()">Clear</button>
+        </div>
+        <div id="results-output"></div>
+    </div>
+
+    <!-- Logs Panel -->
     <div class="log-section">
         <div class="log-header">
             <h2>Logs</h2>
@@ -267,14 +400,23 @@ header h1 {
 
 <div class="response-toast" id="toast"></div>
 
-<script>
-const logOutput = document.getElementById('log-output');
-const toast = document.getElementById('toast');
-const statusDot = document.getElementById('status-dot');
-const statusText = document.getElementById('status-text');
+<!-- Lightbox for full-size images -->
+<div class="lightbox-overlay" id="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" src="" alt="Screenshot">
+</div>
 
-let pendingCommandRequestId = null;
-let pendingCommandTimer = null;
+<script>
+var logOutput = document.getElementById('log-output');
+var resultsOutput = document.getElementById('results-output');
+var toast = document.getElementById('toast');
+var statusDot = document.getElementById('status-dot');
+var statusText = document.getElementById('status-text');
+var lightbox = document.getElementById('lightbox');
+var lightboxImg = document.getElementById('lightbox-img');
+
+var pendingCommandRequestId = null;
+var pendingCommandTimer = null;
+var lastCommandName = '';
 
 function clearPendingCommand() {
     pendingCommandRequestId = null;
@@ -285,9 +427,9 @@ function clearPendingCommand() {
 }
 
 function addLog(text) {
-    const line = document.createElement('div');
+    var line = document.createElement('div');
     line.className = 'log-line';
-    const now = new Date().toLocaleTimeString();
+    var now = new Date().toLocaleTimeString();
     line.innerHTML = '<span class="ts">' + now + '</span>' + escapeHtml(text);
     logOutput.appendChild(line);
     logOutput.scrollTop = logOutput.scrollHeight;
@@ -297,8 +439,53 @@ function addLog(text) {
     }
 }
 
+function addResult(cmdName, payload) {
+    var item = document.createElement('div');
+    item.className = 'result-item';
+
+    var now = new Date().toLocaleTimeString();
+    var meta = '<div class="result-meta"><span class="result-cmd">/' + escapeHtml(cmdName) + '</span><span class="result-time">' + now + '</span></div>';
+    var body = '';
+
+    if (typeof payload === 'string') {
+        body = '<div class="result-text">' + escapeHtml(payload) + '</div>';
+    } else if (payload && typeof payload === 'object') {
+        if (payload.text) {
+            body += '<div class="result-text">' + escapeHtml(payload.text) + '</div>';
+        }
+        if (payload.image) {
+            body += '<img src="' + payload.image + '" onclick="openLightbox(this.src)" alt="Screenshot">';
+        }
+        if (payload.buttons) {
+            body += renderInlineButtonsHTML(payload.buttons);
+        }
+    }
+
+    item.innerHTML = meta + body;
+    resultsOutput.insertBefore(item, resultsOutput.firstChild);
+
+    // Keep max 50 results
+    while (resultsOutput.children.length > 50) {
+        resultsOutput.removeChild(resultsOutput.lastChild);
+    }
+}
+
+function openLightbox(src) {
+    lightboxImg.src = src;
+    lightbox.classList.add('active');
+}
+
+function closeLightbox() {
+    lightbox.classList.remove('active');
+}
+
+// Close lightbox on ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLightbox();
+});
+
 function escapeHtml(text) {
-    const d = document.createElement('div');
+    var d = document.createElement('div');
     d.textContent = text;
     return d.innerHTML;
 }
@@ -307,14 +494,31 @@ function clearLogs() {
     logOutput.innerHTML = '';
 }
 
+function clearResults() {
+    resultsOutput.innerHTML = '';
+}
+
+function renderInlineButtonsHTML(buttonsLayout) {
+    var html = '<div class="inline-keyboard">';
+    buttonsLayout.forEach(function(row) {
+        html += '<div class="inline-keyboard-row">';
+        row.forEach(function(btn) {
+            html += '<button class="inline-btn" onclick="sendCallback(\'' + escapeHtml(btn.callback_data) + '\')">' + escapeHtml(btn.text) + '</button>';
+        });
+        html += '</div>';
+    });
+    html += '</div>';
+    return html;
+}
+
 function renderInlineButtons(buttonsLayout) {
-    const container = document.createElement('div');
+    var container = document.createElement('div');
     container.className = 'inline-keyboard';
     buttonsLayout.forEach(function(row) {
-        const rowDiv = document.createElement('div');
+        var rowDiv = document.createElement('div');
         rowDiv.className = 'inline-keyboard-row';
         row.forEach(function(btn) {
-            const button = document.createElement('button');
+            var button = document.createElement('button');
             button.className = 'inline-btn';
             button.textContent = btn.text;
             button.onclick = function() {
@@ -328,6 +532,17 @@ function renderInlineButtons(buttonsLayout) {
     logOutput.scrollTop = logOutput.scrollHeight;
 }
 
+function processResponse(r, cmdName) {
+    if (typeof r === 'object' && r !== null) {
+        addResult(cmdName, r);
+        if (r.text) addLog('[response] ' + r.text);
+        if (r.image) addLog('[response] 📷 Screenshot received');
+    } else {
+        addResult(cmdName, r);
+        addLog('[response] ' + r);
+    }
+}
+
 function sendCallback(data) {
     addLog('>>> Callback: ' + data);
     fetch('/api/callback', {
@@ -338,17 +553,11 @@ function sendCallback(data) {
     .then(function(r) { return r.json(); })
     .then(function(res) {
          if (res.responses && res.responses.length) {
-            res.responses.forEach(function(r) { 
-                if (typeof r === 'object') {
-                    addLog('[response] ' + (r.text || 'OK'));
-                    if (r.buttons) {
-                        renderInlineButtons(r.buttons);
-                    }
-                } else {
-                    addLog('[response] ' + r); 
-                }
+            res.responses.forEach(function(r) {
+                processResponse(r, 'callback');
             });
-            showToast(typeof res.responses[0] === 'object' ? res.responses[0].text : res.responses[0]);
+            var first = res.responses[0];
+            showToast(typeof first === 'object' ? (first.text || 'OK') : first);
          }
     })
     .catch(function(err) {
@@ -365,7 +574,8 @@ function showToast(text, duration) {
 
 function runCommand(name) {
     clearPendingCommand();
-    const btn = document.querySelector('[data-cmd="' + name + '"]');
+    lastCommandName = name;
+    var btn = document.querySelector('[data-cmd="' + name + '"]');
     if (btn) btn.classList.add('running');
     addLog('>>> Executing: /' + name);
 
@@ -374,17 +584,11 @@ function runCommand(name) {
         .then(function(data) {
             if (btn) btn.classList.remove('running');
             if (data.responses && data.responses.length) {
-                data.responses.forEach(function(r) { 
-                    if (typeof r === 'object') {
-                        addLog('[response] ' + r.text);
-                        if (r.buttons) {
-                            renderInlineButtons(r.buttons);
-                        }
-                    } else {
-                        addLog('[response] ' + r); 
-                    }
+                data.responses.forEach(function(r) {
+                    processResponse(r, name);
                 });
-                showToast(typeof data.responses[0] === 'object' ? data.responses[0].text : data.responses[0]);
+                var first = data.responses[0];
+                showToast(typeof first === 'object' ? (first.text || 'OK') : first);
                 clearPendingCommand();
             } else {
                 addLog('[response] Command accepted (async — completion via SSE)');
@@ -406,30 +610,23 @@ function runCommand(name) {
 }
 
 // SSE for live logs
-let evtSource;
+var evtSource;
 function connectSSE() {
     evtSource = new EventSource('/api/logs');
     evtSource.onmessage = function(e) {
         try {
-            const data = JSON.parse(e.data);
+            var data = JSON.parse(e.data);
             if (typeof data === 'object' && data !== null && data.type === 'command_result') {
+                var responsePayload = data.text;
+                var cmdName = lastCommandName || 'async';
+
                 if (pendingCommandRequestId && data.request_id === pendingCommandRequestId) {
                     clearPendingCommand();
-                    let responsePayload = data.text;
-                    let textMsg = typeof responsePayload === 'string' ? responsePayload : responsePayload.text;
-                    addLog('[async response] ' + textMsg);
-                    showToast(textMsg);
-                    if (typeof responsePayload === 'object' && responsePayload.buttons) {
-                        renderInlineButtons(responsePayload.buttons);
-                    }
-                } else {
-                    let responsePayload = data.text;
-                    let textMsg = typeof responsePayload === 'string' ? responsePayload : responsePayload.text;
-                    addLog('[response] ' + textMsg);
-                    if (typeof responsePayload === 'object' && responsePayload.buttons) {
-                        renderInlineButtons(responsePayload.buttons);
-                    }
                 }
+
+                processResponse(responsePayload, cmdName);
+                var textMsg = typeof responsePayload === 'string' ? responsePayload : (responsePayload.text || 'OK');
+                showToast(textMsg);
                 return;
             }
             addLog(typeof data === 'string' ? data : (data.text != null ? data.text : JSON.stringify(data)));

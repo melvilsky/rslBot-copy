@@ -9,6 +9,10 @@ class MessageContext:
     def reply_text(self, text, **kwargs):
         raise NotImplementedError
 
+    def reply_photo(self, photo_bytes, caption=None):
+        """Send a photo/image. photo_bytes is a BytesIO or bytes object."""
+        raise NotImplementedError
+
     @property
     def message(self):
         return self
@@ -21,6 +25,13 @@ class TelegramMessageContext(MessageContext):
 
     def reply_text(self, text, **kwargs):
         return self.update.message.reply_text(text, **kwargs)
+
+    def reply_photo(self, photo_bytes, caption=None):
+        return self.context.bot.send_photo(
+            chat_id=self.update.message.chat_id,
+            photo=photo_bytes,
+            caption=caption
+        )
 
     @property
     def message(self):
@@ -43,7 +54,26 @@ class WebMessageContext(MessageContext):
         payload = {'text': text}
         if 'buttons' in kwargs:
             payload['buttons'] = kwargs['buttons']
-            
+
+        self.responses.put(payload)
+        if threading.get_ident() != self._owner_tid:
+            try:
+                from web.server import broadcast_command_result
+                broadcast_command_result(self.request_id, payload)
+            except Exception:
+                pass
+
+    def reply_photo(self, photo_bytes, caption=None):
+        import base64
+        if hasattr(photo_bytes, 'read'):
+            data = photo_bytes.read()
+            photo_bytes.seek(0)
+        else:
+            data = photo_bytes
+        b64 = base64.b64encode(data).decode('ascii')
+        payload = {'image': f'data:image/png;base64,{b64}'}
+        if caption:
+            payload['text'] = caption
         self.responses.put(payload)
         if threading.get_ident() != self._owner_tid:
             try:

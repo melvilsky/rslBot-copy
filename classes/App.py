@@ -378,19 +378,12 @@ class App(Foundation):
 
     def _screenshot(self, msg_ctx, ctx):
         if bool(self.window):
-            from classes.MessageContext import TelegramMessageContext
-            if isinstance(msg_ctx, TelegramMessageContext):
-                tctx = msg_ctx.context
-                if not tctx or not getattr(tctx, 'bot', None):
-                    msg_ctx.reply_text('Telegram context unavailable')
-                    return False
-                return tctx.bot.send_photo(
-                    chat_id=msg_ctx.update.message.chat_id,
-                    photo=self.screen()
-                )
-            else:
-                msg_ctx.reply_text('[screenshot captured — view available in Telegram only]')
+            try:
+                msg_ctx.reply_photo(self.screen())
                 return True
+            except Exception as e:
+                msg_ctx.reply_text(f'Screenshot error: {e}')
+                return False
         else:
             msg_ctx.reply_text('No window found')
             return False
@@ -1023,20 +1016,12 @@ class App(Foundation):
             return buffered_image
 
         def _send_grid_screenshot():
-            from classes.MessageContext import TelegramMessageContext
             if bool(self.window):
-                if isinstance(msg_ctx, TelegramMessageContext):
-                    tctx = msg_ctx.context
-                    if tctx and getattr(tctx, 'bot', None):
-                        grid_screen = _get_grid_screenshot()
-                        tctx.bot.send_photo(
-                            chat_id=msg_ctx.update.message.chat_id,
-                            photo=grid_screen
-                        )
-                    else:
-                        response.append('Telegram context unavailable')
-                else:
-                    response.append("[grid screenshot — view available in Telegram only]")
+                try:
+                    grid_screen = _get_grid_screenshot()
+                    msg_ctx.reply_photo(grid_screen)
+                except Exception as e:
+                    response.append(f'Grid screenshot error: {e}')
             else:
                 response.append("No Game window found")
 
