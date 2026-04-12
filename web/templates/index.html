@@ -430,7 +430,7 @@ function addLog(text) {
     var line = document.createElement('div');
     line.className = 'log-line';
     var now = new Date().toLocaleTimeString();
-    line.innerHTML = '<span class="ts">' + now + '</span>' + escapeHtml(text);
+    line.innerHTML = '<span class="ts">' + now + '</span>' + parseBotHtml(text);
     logOutput.appendChild(line);
     logOutput.scrollTop = logOutput.scrollHeight;
 
@@ -448,10 +448,10 @@ function addResult(cmdName, payload) {
     var body = '';
 
     if (typeof payload === 'string') {
-        body = '<div class="result-text">' + escapeHtml(payload) + '</div>';
+        body = '<div class="result-text">' + parseBotHtml(payload) + '</div>';
     } else if (payload && typeof payload === 'object') {
         if (payload.text) {
-            body += '<div class="result-text">' + escapeHtml(payload.text) + '</div>';
+            body += '<div class="result-text">' + parseBotHtml(payload.text) + '</div>';
         }
         if (payload.image) {
             body += '<img src="' + payload.image + '" onclick="openLightbox(this.src)" alt="Screenshot">';
@@ -484,10 +484,21 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeLightbox();
 });
 
-function escapeHtml(text) {
-    var d = document.createElement('div');
-    d.textContent = text;
-    return d.innerHTML;
+function parseBotHtml(text) {
+    if (!text) return '';
+    // First, escape everything for safety
+    var div = document.createElement('div');
+    div.textContent = text;
+    var escaped = div.innerHTML;
+
+    // Then, unlock specific safe tags
+    return escaped
+        .replace(/&lt;b&gt;(.*?)&lt;\/b&gt;/gi, '<b>$1</b>')
+        .replace(/&lt;i&gt;(.*?)&lt;\/i&gt;/gi, '<i>$1</i>')
+        .replace(/&lt;u&gt;(.*?)&lt;\/u&gt;/gi, '<u>$1</u>')
+        .replace(/&lt;s&gt;(.*?)&lt;\/s&gt;/gi, '<s>$1</s>')
+        .replace(/&lt;code&gt;(.*?)&lt;\/code&gt;/gi, '<code>$1</code>')
+        .replace(/&lt;pre&gt;(.*?)&lt;\/pre&gt;/gi, '<pre>$1</pre>');
 }
 
 function clearLogs() {
