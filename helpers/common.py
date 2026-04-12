@@ -112,6 +112,63 @@ def format_string_for_log(input_string):
     return formatted_string
 
 
+# --- Colored Logging for Console ---
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter to add ANSI colors to console output."""
+    COLORS = {
+        'DEBUG': '\033[94m',    # Blue
+        'INFO': '\033[0m',      # Reset
+        'WARNING': '\033[93m', # Yellow
+        'ERROR': '\033[91m',   # Red
+        'CRITICAL': '\033[91m\033[1m', # Bold Red
+    }
+    
+    # Custom tags inside messages
+    TAG_COLORS = {
+        '[startup]': '\033[96m', # Cyan
+        '[web]':     '\033[94m', # Light Blue
+        '[cli]':     '\033[92m', # Green
+        '[app]':     '\033[95m', # Magenta
+        '[error]':   '\033[91m', # Red
+        '[warning]': '\033[93m', # Yellow
+        '[response]':'\033[92m', # Green
+    }
+    
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+
+    def format(self, record):
+        # We don't want to modify the record itself to avoid side effects in other handlers
+        original_msg = str(record.msg)
+        
+        # Colorize [tag] in the message
+        for tag, color in self.TAG_COLORS.items():
+            if tag in original_msg:
+                original_msg = original_msg.replace(tag, f"{self.BOLD}{color}{tag}{self.RESET}")
+        
+        # Temporarily replace msg to format with base logic
+        orig_msg_attr = record.msg
+        record.msg = original_msg
+        
+        # Format the full line (time | message)
+        formatted = super().format(record)
+        
+        # Put back original msg
+        record.msg = orig_msg_attr
+        
+        # Colorize prefix based on level if it's WARNING/ERROR
+        if record.levelno >= logging.WARNING:
+            color = self.COLORS.get(record.levelname, self.RESET)
+            # Find the message part and colorize it
+            parts = formatted.split(' | ', 1)
+            if len(parts) == 2:
+                formatted = f"{parts[0]} | {color}{parts[1]}{self.RESET}"
+            else:
+                formatted = f"{color}{formatted}{self.RESET}"
+                
+        return formatted
+
+
 # Configure logging
 logger = logging.getLogger('RSLBot')
 logger.setLevel(logging.INFO)
@@ -119,17 +176,19 @@ logger.setLevel(logging.INFO)
 if not logger.handlers:
     # Console Handler
     c_handler = logging.StreamHandler(sys.stdout)
-    c_format = logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S')
+    # Using ColoredFormatter for console
+    c_format = ColoredFormatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S')
     c_handler.setFormatter(c_format)
     logger.addHandler(c_handler)
 
-    # File Handler — пишем в папку logs/
+    # File Handler — пишем в папку logs/ (без цветов)
     try:
         logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
         os.makedirs(logs_dir, exist_ok=True)
         log_filename = os.path.join(logs_dir, f"log-{datetime.now().strftime('%Y-%m-%d')}.txt")
         f_handler = RotatingFileHandler(log_filename, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
-        f_handler.setFormatter(c_format)
+        f_file_format = logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S')
+        f_handler.setFormatter(f_file_format)
         logger.addHandler(f_handler)
     except Exception as e:
         print(f"Failed to setup log file handler: {e}")
