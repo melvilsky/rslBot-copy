@@ -149,5 +149,14 @@ def start_web(router, host=None, port=None):
     port = int(port if port is not None else os.getenv('WEB_PORT', '5000'))
     if host in ('0.0.0.0', '::'):
         log('[web] WARNING: listening on all interfaces — no auth; use only on trusted networks')
+        try:
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            log(f'[web] Web Interface available at: http://{local_ip}:{port}')
+        except Exception:
+            pass
     log(f'[web] Starting web server on http://{host}:{port}')
     app_flask.run(host=host, port=port, threaded=True, use_reloader=False)
