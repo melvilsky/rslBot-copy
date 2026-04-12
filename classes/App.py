@@ -96,7 +96,11 @@ def resize_window(x_move=0, y_move=0):
     wins = get_game_windows()
     if len(wins):
         win = wins[0]
-        win.activate()
+        try:
+            win.activate()
+        except Exception as e:
+            if "Error code from Windows: 0" not in str(e):
+                raise
         time.sleep(.5)
         win.resizeTo(WINDOW_SIZE[0], WINDOW_SIZE[1])
         win.moveTo(int(x_move), int(y_move))
@@ -151,7 +155,11 @@ def prepare_window():
     win = None
     if len(wins):
         win = wins[0]
-        win.activate()
+        try:
+            win.activate()
+        except Exception as e:
+            if "Error code from Windows: 0" not in str(e):
+                raise
         time.sleep(.5)
 
         x = 0
