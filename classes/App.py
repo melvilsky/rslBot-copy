@@ -99,7 +99,15 @@ def resize_window(x_move=0, y_move=0):
         try:
             win.activate()
         except Exception as e:
-            if "Error code from Windows: 0" not in str(e):
+            if "Error code from Windows: 0" in str(e):
+                import pyautogui
+                pyautogui.press('alt')
+                try:
+                    win.restore()
+                    win.activate()
+                except Exception:
+                    pass
+            else:
                 raise
         time.sleep(.5)
         win.resizeTo(WINDOW_SIZE[0], WINDOW_SIZE[1])
@@ -158,7 +166,15 @@ def prepare_window():
         try:
             win.activate()
         except Exception as e:
-            if "Error code from Windows: 0" not in str(e):
+            if "Error code from Windows: 0" in str(e):
+                import pyautogui
+                pyautogui.press('alt')
+                try:
+                    win.restore()
+                    win.activate()
+                except Exception:
+                    pass
+            else:
                 raise
         time.sleep(.5)
 
