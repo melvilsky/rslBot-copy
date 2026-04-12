@@ -192,12 +192,14 @@ def main():
                 description='Список команд',
                 category='Инфо',
                 handler=lambda msg_ctx, ctx: msg_ctx.reply_text(router_help_text()),
+                hidden=True,
             )
             router.register(
                 name='start',
                 description='Приветствие и список команд',
                 category='Инфо',
                 handler=lambda msg_ctx, ctx: msg_ctx.reply_text('RSL Bot\n\n' + router_help_text()),
+                hidden=True,
             )
 
             # Telegram-only commands (checkupdate, update, clearchat, loadconfig)

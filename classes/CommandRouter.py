@@ -9,12 +9,13 @@ class CommandRouter:
         self.commands = {}
         self.callbacks = {}
 
-    def register(self, name, description, category, handler):
+    def register(self, name, description, category, handler, hidden=False):
         self.commands[name] = {
             'command': name,
             'description': description,
             'category': category,
             'handler': handler,
+            'hidden': hidden
         }
 
     def unregister(self, name):
@@ -38,7 +39,7 @@ class CommandRouter:
         handler = self.commands[command_name]['handler']
         handler(message_context, None)
 
-    def list_commands(self):
+    def list_commands(self, include_hidden=False):
         return [
             {
                 'command': c['command'],
@@ -46,13 +47,17 @@ class CommandRouter:
                 'category': c['category'],
             }
             for c in self.commands.values()
+            if include_hidden or not c.get('hidden', False)
         ]
 
-    def list_commands_grouped(self):
+    def list_commands_grouped(self, include_hidden=False):
         """Return commands grouped by category (ordered by first appearance)."""
         groups = {}
         order = []
         for cmd in self.commands.values():
+            if not include_hidden and cmd.get('hidden', False):
+                continue
+
             cat = cmd.get('category', 'Прочее')
             if cat not in groups:
                 groups[cat] = []
