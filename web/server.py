@@ -7,7 +7,11 @@ from flask import Flask, render_template, request, jsonify, Response
 from helpers.common import log
 
 import sys
+import logging
 
+# Disable verbose Werkzeug logging (hides /api/status polling spam)
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.setLevel(logging.ERROR)
 # Create an absolute path for the templates directory, ensuring Flask can find it
 if getattr(sys, 'frozen', False):
     # PyInstaller unpacks data into a temporary MEIPASS folder
