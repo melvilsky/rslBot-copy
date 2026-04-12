@@ -6,9 +6,15 @@ import time
 from flask import Flask, render_template, request, jsonify, Response
 from helpers.common import log
 
+import sys
+
 # Create an absolute path for the templates directory, ensuring Flask can find it
-# regardless of what the current working directory is.
-template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'templates'))
+if getattr(sys, 'frozen', False):
+    # PyInstaller unpacks data into a temporary MEIPASS folder
+    template_dir = os.path.join(sys._MEIPASS, 'web', 'templates')
+else:
+    template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'templates'))
+
 app_flask = Flask(__name__, template_folder=template_dir)
 
 command_router = None

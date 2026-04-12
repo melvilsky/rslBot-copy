@@ -40,7 +40,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=binaries,
-    datas=[],
+    datas=[('web/templates', 'web/templates')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
