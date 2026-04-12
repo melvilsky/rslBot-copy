@@ -40,14 +40,18 @@ class WebMessageContext(MessageContext):
         self._owner_tid = threading.get_ident()
 
     def reply_text(self, text, **kwargs):
-        self.responses.put(text)
+        payload = {'text': text}
+        if 'buttons' in kwargs:
+            payload['buttons'] = kwargs['buttons']
+            
+        self.responses.put(payload)
         if threading.get_ident() != self._owner_tid:
             try:
                 from web.server import broadcast_command_result
-
-                broadcast_command_result(self.request_id, text)
+                broadcast_command_result(self.request_id, payload)
             except Exception:
                 pass
+
 
 
 class CLIMessageContext(MessageContext):

@@ -102,6 +102,50 @@ def main():
             log('[startup] Task/preset commands registered in router')
 
             if has_profile_mode():
+                def process_loadconfig(i, reply_fn):
+                    names = list_profile_filenames()
+                    if i < 0 or i >= len(names):
+                        reply_fn('Профиль не найден.')
+                        return
+                    name = names[i]
+                    try:
+                        log(f'[loadconfig] Loading profile: {name}')
+
+                        # Save old task/preset names before profile switch
+                        old_tasks = [t['command'] for t in app.config.get('tasks', [])]
+                        old_presets = [make_command_key(f"preset {p['name']}") for p in app.config.get('presets', [])]
+
+                        app.load_profile_by_name(name)
+
+                        if telegram_bot:
+                            telegram_bot.remove_task_handlers()
+                        # Remove old task/preset commands from router
+                        for cmd in old_tasks + old_presets:
+                            router.unregister(cmd)
+                        # Re-register new task/preset commands
+                        register_task_preset_commands_in_router()
+                        # Re-register in telegram
+                        if telegram_bot:
+                            for cmd_info in router.list_commands():
+                                if cmd_info['category'] in ('Игровые', 'Пресеты'):
+                                    telegram_bot.add({
+                                        'command': cmd_info['command'],
+                                        'description': cmd_info['description'],
+                                        'category': cmd_info['category'],
+                                        'handler': make_telegram_handler(cmd_info['command']),
+                                        'track': True,
+                                    })
+
+                        pid = getattr(app, 'current_player_id', None)
+                        msg = f'Игрок {name} ({pid}) загружен и готов к работе.' if pid else f'Конфиг {name} загружен и готов к работе.'
+                        log(f'[loadconfig] {msg}')
+                        reply_fn(msg)
+                    except Exception as e:
+                        import traceback
+                        err = traceback.format_exc()
+                        log_save(f'[loadconfig] Error loading profile {name}: {err}')
+                        reply_fn(f'Ошибка загрузки: {e}')
+
                 def loadconfig_router_handler(msg_ctx, ctx):
                     if not has_profile_mode():
                         msg_ctx.reply_text('Режим профилей не активен (нет папки profiles с .json).')
@@ -110,10 +154,19 @@ def main():
                     if not names:
                         msg_ctx.reply_text('В папке profiles нет конфигов.')
                         return
-                    msg_ctx.reply_text(
-                        'Доступные профили: ' + ', '.join(names)
-                        + '\n(Выбор профиля по кнопкам — только в Telegram)'
-                    )
+                    
+                    buttons = [[{'text': n, 'callback_data': f'loadconfig:{i}'}] for i, n in enumerate(names)]
+                    msg_ctx.reply_text('Выберите конфиг для загрузки:', buttons=buttons)
+
+                def router_loadconfig_callback(data, msg_ctx):
+                    idx = data.split(':', 1)[1]
+                    try:
+                        i = int(idx)
+                        process_loadconfig(i, lambda text: msg_ctx.reply_text(text))
+                    except ValueError:
+                        msg_ctx.reply_text('Неверные данные.')
+
+                router.register_callback('loadconfig:', router_loadconfig_callback)
 
                 router.register(
                     name='loadconfig',
@@ -263,50 +316,15 @@ def main():
                         except Exception:
                             pass
                         return
-                    name = names[i]
-                    try:
-                        log(f'[loadconfig] Loading profile: {name}')
-
-                        # Save old task/preset names before profile switch
-                        old_tasks = [t['command'] for t in app.config.get('tasks', [])]
-                        old_presets = [make_command_key(f"preset {p['name']}") for p in app.config.get('presets', [])]
-
-                        app.load_profile_by_name(name)
-
-                        # Remove old task handlers from telegram
-                        telegram_bot.remove_task_handlers()
-                        # Remove old task/preset commands from router
-                        for cmd in old_tasks + old_presets:
-                            router.unregister(cmd)
-                        # Re-register new task/preset commands
-                        register_task_preset_commands_in_router()
-                        # Re-register in telegram
-                        for cmd_info in router.list_commands():
-                            if cmd_info['category'] in ('Игровые', 'Пресеты'):
-                                telegram_bot.add({
-                                    'command': cmd_info['command'],
-                                    'description': cmd_info['description'],
-                                    'category': cmd_info['category'],
-                                    'handler': make_telegram_handler(cmd_info['command']),
-                                    'track': True,
-                                })
-
-                        pid = getattr(app, 'current_player_id', None)
-                        msg = f'Игрок {name} ({pid}) загружен и готов к работе.' if pid else f'Конфиг {name} загружен и готов к работе.'
-                        log(f'[loadconfig] {msg}')
+                        
+                    def reply_fn(text):
                         try:
-                            query.edit_message_text(text=msg)
+                            query.edit_message_text(text=text)
                         except Exception:
-                            ctx.bot.send_message(chat_id=query.message.chat_id, text=msg)
-                    except Exception as e:
-                        import traceback
-                        err = traceback.format_exc()
-                        log_save(f'[loadconfig] Error loading profile {name}: {err}')
-                        try:
-                            query.edit_message_text(text=f'Ошибка загрузки: {e}')
-                        except Exception:
-                            ctx.bot.send_message(chat_id=query.message.chat_id, text=f'Ошибка загрузки: {e}')
-
+                            ctx.bot.send_message(chat_id=query.message.chat_id, text=text)
+                            
+                    process_loadconfig(i, reply_fn)
+                
                 if has_profile_mode():
                     telegram_bot.add({
                         'command': 'loadconfig',

@@ -341,7 +341,15 @@ class ArenaFactory(Location):
             _x = _region[0] - 5
             _y = _region[1] + 5
             click(_x, _y)
-            self._refill()
+            refilled = self._refill()
+
+            if self.terminated:
+                return
+
+            if refilled:
+                sleep(2)
+                pyautogui.press('escape')
+                sleep(1)
 
         response = self.awaits([self.E_BUTTON_REFRESH, self.E_TERMINATE, self.E_REFRESH_TIMEOUT])
         if response and response.get('name') == 'RefreshTimeout':
@@ -665,8 +673,8 @@ class ArenaFactory(Location):
                 if not refilled:
                     sleep(2)
                     if pixel_check_new([x, y, ATTACK_BUTTON_RGB], mistake=10, label="back_to_list_check"):
-                        self.log('Back at list (battle did not start after closing refill dialog) — skipping wait')
-                        continue
+                        self.log('Back at list (battle did not start) — breaking to trigger refresh')
+                        break
 
                 # User requested check: verify if the Start Battle button is still present
                 start_battle_check_coord = [792, 508]

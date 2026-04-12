@@ -65,6 +65,28 @@ def api_execute(name):
     })
 
 
+@app_flask.route('/api/callback', methods=['POST'])
+def api_callback():
+    from classes.MessageContext import WebMessageContext
+    data = request.json.get('data')
+    msg_ctx = WebMessageContext()
+    if command_router:
+        command_router.execute_callback(data, msg_ctx)
+
+    responses = []
+    deadline = time.time() + 2
+    while time.time() < deadline:
+        try:
+            responses.append(msg_ctx.responses.get_nowait())
+        except queue.Empty:
+            break
+    return jsonify({
+        'status': 'ok',
+        'responses': responses,
+        'request_id': msg_ctx.request_id,
+    })
+
+
 @app_flask.route('/api/status')
 def api_status():
     task_name = None

@@ -7,6 +7,7 @@ class CommandRouter:
     def __init__(self, app):
         self.app = app
         self.commands = {}
+        self.callbacks = {}
 
     def register(self, name, description, category, handler):
         self.commands[name] = {
@@ -18,6 +19,17 @@ class CommandRouter:
 
     def unregister(self, name):
         self.commands.pop(name, None)
+
+    def register_callback(self, prefix, handler):
+        self.callbacks[prefix] = handler
+
+    def execute_callback(self, data, message_context):
+        for prefix, handler in self.callbacks.items():
+            if data.startswith(prefix):
+                handler(data, message_context)
+                return True
+        message_context.reply_text(f"Unknown callback: {data}")
+        return False
 
     def execute(self, command_name, message_context):
         if command_name not in self.commands:
