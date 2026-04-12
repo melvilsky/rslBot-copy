@@ -501,6 +501,12 @@ function parseBotHtml(text) {
         .replace(/&lt;pre&gt;(.*?)&lt;\/pre&gt;/gi, '<pre>$1</pre>');
 }
 
+function escapeHtml(text) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+}
+
 function clearLogs() {
     logOutput.innerHTML = '';
 }
