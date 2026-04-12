@@ -1,5 +1,8 @@
 from bot import TelegramBOT
 from classes.App import *
+from classes.CommandRouter import CommandRouter
+from classes.MessageContext import TelegramMessageContext
+from classes.CLI import CLIRepl
 from locations.live_arena.index import *
 from helpers.common import get_last_chat_id
 from constants.index import list_profile_filenames, has_profile_mode
@@ -7,6 +10,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler
 import os
 import sys
+import threading
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,11 +28,7 @@ else:
         print('Provide TESSERACT_CMD variable')
 
 
-
 def main():
-    # debug_save_screenshot(region=[845, 251, 42, 42], quality=100)
-    # return
-
     if is_prod:
         log("The App is starting, don't touch the mouse and keyboard")
         sleep(10)
@@ -51,9 +51,137 @@ def main():
         try:
             if app.config['start_immediate']:
                 app.start()
-                # print('App is started')
-                # app.get_instance('arena_live').attack()
 
+            # ── CommandRouter: единый реестр команд для всех транспортов ──
+            router = CommandRouter(app)
+
+            # Регистрируем base app commands
+            commands_to_apply = copy.copy(app.COMMANDS_GAME_PATH_DEPENDANT) if game_path else []
+            commands_to_apply += app.COMMANDS_COMMON
+            for command_name in commands_to_apply:
+                command_data = app.commands[command_name]
+                router.register(
+                    name=command_name,
+                    description=command_data['description'],
+                    category=command_data.get('category', 'Управление'),
+                    handler=command_data['handler'],
+                )
+
+            # ── Регистрация task/preset команд в router ──
+            def register_task_preset_commands_in_router():
+                if len(app.config['tasks']):
+                    log(f"[startup] Building {len(app.config['tasks'])} task command(s)...")
+                    for task in app.config['tasks']:
+                        router.register(
+                            name=task['command'],
+                            description=f"command '{task['title']}'",
+                            category='Игровые',
+                            handler=app.task(
+                                name=task['command'],
+                                cb=app.get_entry(command_name=task['command'])['instance'].run
+                            ),
+                        )
+
+                if len(app.config['presets']):
+                    def process_preset_commands(msg_ctx, ctx, preset):
+                        for command in preset['commands']:
+                            app.task(
+                                name=command,
+                                cb=app.get_entry(command_name=command)['instance'].run
+                            )(msg_ctx, ctx)
+
+                    for preset in app.config['presets']:
+                        router.register(
+                            name=make_command_key(f"preset {preset['name']}"),
+                            description=f"commands in a row: {', '.join(preset['commands'])}",
+                            category='Пресеты',
+                            handler=lambda msg_ctx, ctx, p=preset: process_preset_commands(msg_ctx, ctx, p),
+                        )
+
+            register_task_preset_commands_in_router()
+            log('[startup] Task/preset commands registered in router')
+
+            if has_profile_mode():
+                def loadconfig_router_handler(msg_ctx, ctx):
+                    if not has_profile_mode():
+                        msg_ctx.reply_text('Режим профилей не активен (нет папки profiles с .json).')
+                        return
+                    names = list_profile_filenames()
+                    if not names:
+                        msg_ctx.reply_text('В папке profiles нет конфигов.')
+                        return
+                    msg_ctx.reply_text(
+                        'Доступные профили: ' + ', '.join(names)
+                        + '\n(Выбор профиля по кнопкам — только в Telegram)'
+                    )
+
+                router.register(
+                    name='loadconfig',
+                    description='Выбрать и загрузить конфиг из папки profiles',
+                    category='Профили',
+                    handler=loadconfig_router_handler,
+                )
+                log('[startup] loadconfig registered in router (profiles mode)')
+
+            def router_help_text():
+                lines = ['Доступные команды:']
+                for cat_name, cmds in router.list_commands_grouped():
+                    lines.append('')
+                    lines.append(cat_name + ':')
+                    for c in cmds:
+                        if c['command'] in ('start', 'help'):
+                            continue
+                        lines.append('  /' + c['command'] + ' — ' + c['description'])
+                return '\n'.join(lines)
+
+            router.register(
+                name='help',
+                description='Список команд',
+                category='Инфо',
+                handler=lambda msg_ctx, ctx: msg_ctx.reply_text(router_help_text()),
+            )
+            router.register(
+                name='start',
+                description='Приветствие и список команд',
+                category='Инфо',
+                handler=lambda msg_ctx, ctx: msg_ctx.reply_text('RSL Bot\n\n' + router_help_text()),
+            )
+
+            # Telegram-only commands (checkupdate, update, clearchat, loadconfig)
+            # These stay Telegram-specific because they use Telegram bot/chat APIs directly
+            # but we also register simplified versions in router for Web/CLI where applicable
+
+            router.register(
+                name='checkupdate',
+                description='Проверить наличие обновлений',
+                category='Инфо',
+                handler=lambda msg_ctx, ctx: msg_ctx.reply_text(
+                    app.check_update_status(telegram_bot=telegram_bot),
+                    parse_mode='HTML'
+                ),
+            )
+
+            router.register(
+                name='update',
+                description='Обновить приложение до последней версии',
+                category='Инфо',
+                handler=lambda msg_ctx, ctx: msg_ctx.reply_text(
+                    app.perform_update(telegram_bot=telegram_bot)
+                ),
+            )
+
+            # ── Web server (daemon thread) ──
+            from web.server import start_web
+            from web.log_handler import install_web_log_handler
+            install_web_log_handler()
+            web_thread = threading.Thread(target=start_web, args=(router,), daemon=True)
+            web_thread.start()
+
+            # ── CLI REPL (daemon thread) ──
+            cli = CLIRepl(router)
+            cli.start()
+
+            # ── Telegram bot ──
             if has_telegram_token:
                 log('[startup] Creating TelegramBOT...')
                 telegram_bot = TelegramBOT({
@@ -61,31 +189,35 @@ def main():
                 })
                 telegram_bot.start()
                 log('[startup] TelegramBOT started')
-                
-                # Устанавливаем ссылку на бота в app для доступа из методов
+
                 app.telegram_bot = telegram_bot
-                
-                # Проверяем обновления при запуске
+
                 log('[startup] Checking for updates...')
                 app.check_for_updates(telegram_bot=telegram_bot)
-                
-                # Добавляем команду /checkupdate
-                telegram_bot.add({
-                    'command': 'checkupdate',
-                    'description': 'Проверить наличие обновлений',
-                    'category': 'Инфо',
-                    'handler': lambda upd, ctx: upd.message.reply_text(app.check_update_status(telegram_bot=telegram_bot), parse_mode='HTML')
-                })
-                
-                # Добавляем команду /update
-                telegram_bot.add({
-                    'command': 'update',
-                    'description': 'Обновить приложение до последней версии',
-                    'category': 'Инфо',
-                    'handler': lambda upd, ctx: upd.message.reply_text(app.perform_update(telegram_bot=telegram_bot))
-                })
-                
-                # Добавляем команду /clearchat
+
+                # Wrap each router command for Telegram:
+                # Telegram handler receives (update, context) -> creates TelegramMessageContext -> calls router
+                def make_telegram_handler(cmd_name):
+                    def handler(upd, ctx):
+                        msg_ctx = TelegramMessageContext(upd, ctx)
+                        router.execute(cmd_name, msg_ctx)
+                    return handler
+
+                # Register all router commands into telegram bot (/start and /help stay from bot.py)
+                for cmd_info in router.list_commands():
+                    cmd_name = cmd_info['command']
+                    if cmd_name in ('start', 'help'):
+                        continue
+                    is_task_or_preset = cmd_info['category'] in ('Игровые', 'Пресеты')
+                    telegram_bot.add({
+                        'command': cmd_name,
+                        'description': cmd_info['description'],
+                        'category': cmd_info['category'],
+                        'handler': make_telegram_handler(cmd_name),
+                        'track': is_task_or_preset,
+                    })
+
+                # Telegram-only: /clearchat (uses Telegram-specific APIs)
                 telegram_bot.add({
                     'command': 'clearchat',
                     'description': 'Очистить чат от сообщений бота',
@@ -93,61 +225,9 @@ def main():
                     'handler': lambda upd, ctx: app.clear_chat(update=upd, context=ctx, telegram_bot=telegram_bot)
                 })
 
-                log('[startup] Registering base commands (checkupdate, update, clearchat)...')
-                commands_to_apply = copy.copy(app.COMMANDS_GAME_PATH_DEPENDANT) if game_path else []
-                commands_to_apply += app.COMMANDS_COMMON
-                log(f'[startup] Registering app commands: {commands_to_apply}')
+                log('[startup] All commands registered in Telegram')
 
-                for i in range(len(commands_to_apply)):
-                    command_name = commands_to_apply[i]
-                    command_data = app.commands[command_name]
-                    telegram_bot.add({
-                        'command': command_name,
-                        'description': command_data['description'],
-                        'category': command_data.get('category', 'Управление'),
-                        'handler': command_data['handler'],
-                    })
-
-                log('[startup] Registering task/preset commands...')
-                def register_task_preset_commands():
-                    regular_command = []
-                    if len(app.config['tasks']):
-                        log(f"[startup] Building {len(app.config['tasks'])} task command(s)...")
-                        regular_command = list(map(lambda task: {
-                            'command': task['command'],
-                            'description': f"command '{task['title']}'",
-                            'category': 'Игровые',
-                            'handler': app.task(
-                                name=task['command'],
-                                cb=app.get_entry(command_name=task['command'])['instance'].run
-                            ),
-                            'track': True,
-                        }, app.config['tasks']))
-
-                    presets_commands = []
-                    if len(app.config['presets']):
-                        def process_preset_commands(upd, ctx, preset):
-                            for i in range(len(preset['commands'])):
-                                command = preset['commands'][i]
-                                app.task(
-                                    name=command,
-                                    cb=app.get_entry(command_name=command)['instance'].run
-                                )(upd, ctx)
-
-                        presets_commands = list(map(lambda preset: {
-                            'command': make_command_key(f"preset {preset['name']}"),
-                            'description': f"commands in a row: {', '.join(preset['commands'])}",
-                            'category': 'Пресеты',
-                            'handler': lambda upd, ctx, p=preset: process_preset_commands(upd, ctx, p),
-                            'track': True,
-                        }, app.config['presets']))
-
-                    for c in regular_command + presets_commands:
-                        telegram_bot.add(c)
-
-                register_task_preset_commands()
-                log('[startup] Task/preset commands registered')
-
+                # ── Profile mode (Telegram-only with inline keyboards) ──
                 log('[startup] Setting up loadconfig...')
                 def loadconfig_cmd(upd, ctx):
                     if not has_profile_mode():
@@ -186,16 +266,37 @@ def main():
                     name = names[i]
                     try:
                         log(f'[loadconfig] Loading profile: {name}')
+
+                        # Save old task/preset names before profile switch
+                        old_tasks = [t['command'] for t in app.config.get('tasks', [])]
+                        old_presets = [make_command_key(f"preset {p['name']}") for p in app.config.get('presets', [])]
+
                         app.load_profile_by_name(name)
+
+                        # Remove old task handlers from telegram
                         telegram_bot.remove_task_handlers()
-                        register_task_preset_commands()
+                        # Remove old task/preset commands from router
+                        for cmd in old_tasks + old_presets:
+                            router.unregister(cmd)
+                        # Re-register new task/preset commands
+                        register_task_preset_commands_in_router()
+                        # Re-register in telegram
+                        for cmd_info in router.list_commands():
+                            if cmd_info['category'] in ('Игровые', 'Пресеты'):
+                                telegram_bot.add({
+                                    'command': cmd_info['command'],
+                                    'description': cmd_info['description'],
+                                    'category': cmd_info['category'],
+                                    'handler': make_telegram_handler(cmd_info['command']),
+                                    'track': True,
+                                })
+
                         pid = getattr(app, 'current_player_id', None)
                         msg = f'Игрок {name} ({pid}) загружен и готов к работе.' if pid else f'Конфиг {name} загружен и готов к работе.'
                         log(f'[loadconfig] {msg}')
                         try:
                             query.edit_message_text(text=msg)
                         except Exception:
-                            # Сообщение могло быть удалено через /clearchat — отправляем новое
                             ctx.bot.send_message(chat_id=query.message.chat_id, text=msg)
                     except Exception as e:
                         import traceback
@@ -206,7 +307,6 @@ def main():
                         except Exception:
                             ctx.bot.send_message(chat_id=query.message.chat_id, text=f'Ошибка загрузки: {e}')
 
-
                 if has_profile_mode():
                     telegram_bot.add({
                         'command': 'loadconfig',
@@ -215,8 +315,7 @@ def main():
                         'handler': loadconfig_cmd,
                     })
                     telegram_bot.dp.add_handler(CallbackQueryHandler(loadconfig_callback, run_async=True))
-                    
-                    # После загрузки всего предлагаем выбрать профиль в Telegram боте
+
                     chat_id = get_last_chat_id()
                     if chat_id:
                         names = list_profile_filenames()
@@ -234,9 +333,10 @@ def main():
 
                 log('[startup] Starting bot polling (listen)...')
                 telegram_bot.listen()
-                telegram_bot.updater.idle()
-
-
+            else:
+                # No Telegram token — block the main thread so Web and CLI keep running
+                log('[startup] No Telegram token. Web and CLI are running. Press Ctrl+C to exit.')
+                threading.Event().wait()
 
         except KeyboardInterrupt:
             error = traceback.format_exc()
@@ -246,7 +346,6 @@ def main():
             log_save(error)
 
             if has_telegram_token and telegram_bot:
-                # Wait for the bot thread to finish
                 telegram_bot.join()
 
 

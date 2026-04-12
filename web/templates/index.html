@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RSL Bot — Control Panel</title>
+<style>
+:root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --accent: #6c5ce7;
+    --accent-hover: #7c6df7;
+    --text: #e0e0e0;
+    --text-muted: #8b8fa3;
+    --success: #00b894;
+    --danger: #ff6b6b;
+    --warning: #ffc048;
+    --log-bg: #12141c;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+}
+
+header h1 {
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+}
+
+.status-dot.busy { background: var(--warning); animation: pulse 1.5s infinite; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.category {
+    margin-bottom: 24px;
+}
+
+.category-title {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    padding-left: 4px;
+}
+
+.commands-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.cmd-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    font-size: 0.9rem;
+}
+
+.cmd-btn:hover {
+    border-color: var(--accent);
+    background: #1e2130;
+}
+
+.cmd-btn:active {
+    transform: scale(0.97);
+}
+
+.cmd-btn.running {
+    border-color: var(--warning);
+    background: rgba(255, 192, 72, 0.08);
+}
+
+.cmd-btn .cmd-name {
+    font-weight: 600;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+}
+
+.cmd-btn .cmd-desc {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-top: 4px;
+}
+
+.log-section {
+    margin-top: 32px;
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.log-header h2 {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.log-clear-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.log-clear-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+#log-output {
+    background: var(--log-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    height: 300px;
+    overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 0.8rem;
+    line-height: 1.6;
+}
+
+.log-line {
+    padding: 1px 0;
+    word-break: break-all;
+}
+
+.log-line .ts {
+    color: var(--text-muted);
+    margin-right: 8px;
+}
+
+.response-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--card);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 12px 18px;
+    max-width: 400px;
+    font-size: 0.85rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s;
+    z-index: 1000;
+}
+
+.response-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>RSL Bot</h1>
+        <div class="status-badge">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">Idle</span>
+        </div>
+    </header>
+
+    {% for cat_name, cmds in commands_grouped %}
+    <div class="category">
+        <div class="category-title">{{ cat_name }}</div>
+        <div class="commands-grid">
+            {% for cmd in cmds %}
+            <button class="cmd-btn" data-cmd="{{ cmd.command }}" onclick="runCommand('{{ cmd.command }}')">
+                <div class="cmd-name">/{{ cmd.command }}</div>
+                <div class="cmd-desc">{{ cmd.description }}</div>
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="log-section">
+        <div class="log-header">
+            <h2>Logs</h2>
+            <button class="log-clear-btn" onclick="clearLogs()">Clear</button>
+        </div>
+        <div id="log-output"></div>
+    </div>
+</div>
+
+<div class="response-toast" id="toast"></div>
+
+<script>
+const logOutput = document.getElementById('log-output');
+const toast = document.getElementById('toast');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+
+let pendingCommandRequestId = null;
+let pendingCommandTimer = null;
+
+function clearPendingCommand() {
+    pendingCommandRequestId = null;
+    if (pendingCommandTimer) {
+        clearTimeout(pendingCommandTimer);
+        pendingCommandTimer = null;
+    }
+}
+
+function addLog(text) {
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    const now = new Date().toLocaleTimeString();
+    line.innerHTML = '<span class="ts">' + now + '</span>' + escapeHtml(text);
+    logOutput.appendChild(line);
+    logOutput.scrollTop = logOutput.scrollHeight;
+
+    while (logOutput.children.length > 500) {
+        logOutput.removeChild(logOutput.firstChild);
+    }
+}
+
+function escapeHtml(text) {
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+}
+
+function clearLogs() {
+    logOutput.innerHTML = '';
+}
+
+function showToast(text, duration) {
+    toast.textContent = text;
+    toast.classList.add('show');
+    setTimeout(function() { toast.classList.remove('show'); }, duration || 3000);
+}
+
+function runCommand(name) {
+    clearPendingCommand();
+    const btn = document.querySelector('[data-cmd="' + name + '"]');
+    if (btn) btn.classList.add('running');
+    addLog('>>> Executing: /' + name);
+
+    fetch('/api/command/' + name, {method: 'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (btn) btn.classList.remove('running');
+            if (data.responses && data.responses.length) {
+                data.responses.forEach(function(r) { addLog('[response] ' + r); });
+                showToast(data.responses[0]);
+                clearPendingCommand();
+            } else {
+                addLog('[response] Command accepted (async — completion via SSE)');
+                showToast('Command /' + name + ' accepted');
+                pendingCommandRequestId = data.request_id || null;
+                if (pendingCommandRequestId) {
+                    pendingCommandTimer = setTimeout(function() {
+                        clearPendingCommand();
+                    }, 300000);
+                }
+            }
+        })
+        .catch(function(err) {
+            if (btn) btn.classList.remove('running');
+            addLog('[error] ' + err);
+            showToast('Error: ' + err, 5000);
+            clearPendingCommand();
+        });
+}
+
+// SSE for live logs
+let evtSource;
+function connectSSE() {
+    evtSource = new EventSource('/api/logs');
+    evtSource.onmessage = function(e) {
+        try {
+            const data = JSON.parse(e.data);
+            if (typeof data === 'object' && data !== null && data.type === 'command_result') {
+                if (pendingCommandRequestId && data.request_id === pendingCommandRequestId) {
+                    clearPendingCommand();
+                    addLog('[async response] ' + data.text);
+                    showToast(data.text);
+                } else {
+                    addLog('[response] ' + data.text);
+                }
+                return;
+            }
+            addLog(typeof data === 'string' ? data : (data.text != null ? data.text : JSON.stringify(data)));
+        } catch (_) {
+            addLog(e.data);
+        }
+    };
+    evtSource.onerror = function() {
+        evtSource.close();
+        setTimeout(connectSSE, 3000);
+    };
+}
+connectSSE();
+
+// Poll status
+function pollStatus() {
+    fetch('/api/status')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.current_task) {
+                statusDot.className = 'status-dot busy';
+                statusText.textContent = 'Running: ' + data.current_task;
+            } else {
+                statusDot.className = 'status-dot';
+                statusText.textContent = data.queue_size > 0
+                    ? 'Queue: ' + data.queue_size
+                    : 'Idle';
+            }
+        })
+        .catch(function() {});
+}
+setInterval(pollStatus, 2000);
+pollStatus();
+</script>
+</body>
+</html>

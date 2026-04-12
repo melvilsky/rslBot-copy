@@ -7,7 +7,10 @@ try:
     from classes.Recorder import Recorder
 except ImportError:
     Recorder = None
-from telegram.error import BadRequest
+try:
+    from telegram.error import BadRequest
+except ImportError:
+    BadRequest = None
 from locations.rewards.index import *
 # from locations.live_arena.index_old import *
 from locations.live_arena.index import *
@@ -336,28 +339,36 @@ class App(Foundation):
             'record_on': {
                 'description': 'Start recording clicks',
                 'category': 'Запись',
-                'handler': lambda upd, ctx: upd.message.reply_text(
+                'handler': lambda msg_ctx, ctx: msg_ctx.reply_text(
                     self.recorder.start() if self.recorder else "Recorder unavailable (pynput not installed)"
                 ),
             },
             'record_off': {
                 'description': 'Stop recording and show results',
                 'category': 'Запись',
-                'handler': lambda upd, ctx: upd.message.reply_text(
+                'handler': lambda msg_ctx, ctx: msg_ctx.reply_text(
                     self.recorder.stop() if self.recorder else "Recorder unavailable (pynput not installed)"
                 ),
             },
         }
 
-    def _screenshot(self, upd, ctx):
-        # @TODO Bug
-        # if not bool(self.window):
-        #     self.prepare()
-
+    def _screenshot(self, msg_ctx, ctx):
         if bool(self.window):
-            return ctx.bot.send_photo(chat_id=upd.message.chat_id, photo=self.screen())
+            from classes.MessageContext import TelegramMessageContext
+            if isinstance(msg_ctx, TelegramMessageContext):
+                tctx = msg_ctx.context
+                if not tctx or not getattr(tctx, 'bot', None):
+                    msg_ctx.reply_text('Telegram context unavailable')
+                    return False
+                return tctx.bot.send_photo(
+                    chat_id=msg_ctx.update.message.chat_id,
+                    photo=self.screen()
+                )
+            else:
+                msg_ctx.reply_text('[screenshot captured — view available in Telegram only]')
+                return True
         else:
-            upd.message.reply_text('No window found')
+            msg_ctx.reply_text('No window found')
             return False
 
     def _prepare_config(self, config_json):
@@ -952,7 +963,7 @@ class App(Foundation):
         while not queue.empty():
             queue.get()
 
-    def _click(self, upd, ctx):
+    def _click(self, msg_ctx, ctx):
         response = []
 
         def _get_grid_screenshot():
@@ -962,21 +973,14 @@ class App(Foundation):
             grid_color = (150, 255, 0)
 
             image_bytes = self.screen()
-            # Convert the image to a numpy array
             img_np = np.array(Image.open(image_bytes))
-
-            # Get the image dimensions
             height, width, _ = img_np.shape
 
-            # Draw vertical lines
             for x in range(0, width, gap_size):
                 cv2.line(img_np, (x, 0), (x, height), grid_color, 1)
-
-            # Draw horizontal lines
             for y in range(0, height, gap_size):
                 cv2.line(img_np, (0, y), (width, y), grid_color, 1)
 
-            # Draw pixel coordinates
             font = cv2.FONT_HERSHEY_SIMPLEX
             for y in range(0, height, gap_size):
                 for x in range(0, width, gap_size):
@@ -988,33 +992,37 @@ class App(Foundation):
                     text_y = y + (gap_size + text_size[1]) // 2
                     cv2.putText(img_np, text, (text_x, text_y), font, font_scale, font_color, 1, cv2.LINE_AA)
 
-            # Convert the numpy array back to an image
             img_with_grid = Image.fromarray(img_np)
-
-            # Convert the image to bytes using BytesIO
             buffered_image = BytesIO()
-            img_with_grid.save(buffered_image, format="JPEG")  # Change format if necessary
+            img_with_grid.save(buffered_image, format="JPEG")
             buffered_image.seek(0)
-
             return buffered_image
 
         def _send_grid_screenshot():
+            from classes.MessageContext import TelegramMessageContext
             if bool(self.window):
-                grid_screen = _get_grid_screenshot()
-                ctx.bot.send_photo(
-                    chat_id=upd.message.chat_id,
-                    photo=grid_screen
-                )
+                if isinstance(msg_ctx, TelegramMessageContext):
+                    tctx = msg_ctx.context
+                    if tctx and getattr(tctx, 'bot', None):
+                        grid_screen = _get_grid_screenshot()
+                        tctx.bot.send_photo(
+                            chat_id=msg_ctx.update.message.chat_id,
+                            photo=grid_screen
+                        )
+                    else:
+                        response.append('Telegram context unavailable')
+                else:
+                    response.append("[grid screenshot — view available in Telegram only]")
             else:
                 response.append("No Game window found")
 
-        if len(ctx.args) < 2:
+        args = ctx.args if ctx and hasattr(ctx, 'args') else []
+        if len(args) < 2:
             _send_grid_screenshot()
             response.append('Provide coordinates: x y')
-
         else:
-            x = ctx.args[0]
-            y = ctx.args[1]
+            x = args[0]
+            y = args[1]
 
             if is_number(x) and is_number(y):
                 click(
@@ -1027,7 +1035,7 @@ class App(Foundation):
                 response.append('X and Y must be numbers')
 
         if len(response):
-            return upd.message.reply_text('\n'.join(response))
+            return msg_ctx.reply_text('\n'.join(response))
 
     def determine_language(self):
         close_popup_recursive()
@@ -1139,11 +1147,9 @@ class App(Foundation):
     def task(self, name, cb, task_type="aside"):
         # @TODO
         # self.tasks[name] =
-        return lambda upd, ctx: self.taskManager.add(name, lambda: cb(upd, ctx), props={
-            # 'onDone': lambda text: self.on_message(upd, text),
-            # 'onError': lambda text: self.on_message(upd, text),
-            'onDone': upd.message.reply_text,
-            'onError': upd.message.reply_text,
+        return lambda msg_ctx, ctx: self.taskManager.add(name, lambda: cb(msg_ctx, ctx), props={
+            'onDone': msg_ctx.reply_text,
+            'onError': msg_ctx.reply_text,
             'type': task_type,
         })
 

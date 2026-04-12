@@ -84,7 +84,7 @@ class Location(Foundation):
 
     def send_message(self, text):
         if self.update is not None:
-            self.update.message.reply_text(text)
+            self.update.reply_text(text)
         else:
             log(text)
 
@@ -119,7 +119,7 @@ class Location(Foundation):
         # @TODO Test
         # self.results.append([True, False])
 
-    def run(self, upd, ctx, *args):
+    def run(self, msg_ctx, ctx, *args):
         # Resets 'completed' state next day
         if len(self.duration.durations):
             first_call_time = self.duration.durations[0][0]
@@ -142,7 +142,7 @@ class Location(Foundation):
             self.app.relogin()
 
         # Defines important variables
-        self.update = upd
+        self.update = msg_ctx
         self.context = ctx
         self.terminated = False
         self.break_loops = False
