@@ -134,7 +134,8 @@ def api_logs():
 def start_web(router, host=None, port=None):
     global command_router
     command_router = router
-    host = host if host is not None else os.getenv('WEB_HOST', '127.0.0.1')
+    # Defaulting to 0.0.0.0 to allow LAN access (e.g. from Host PC to VM)
+    host = host if host is not None else os.getenv('WEB_HOST', '0.0.0.0')
     port = int(port if port is not None else os.getenv('WEB_PORT', '5000'))
     if host in ('0.0.0.0', '::'):
         log('[web] WARNING: listening on all interfaces — no auth; use only on trusted networks')
