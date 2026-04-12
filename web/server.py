@@ -6,7 +6,11 @@ import time
 from flask import Flask, render_template, request, jsonify, Response
 from helpers.common import log
 
-app_flask = Flask(__name__, template_folder='templates')
+# Create an absolute path for the templates directory, ensuring Flask can find it
+# regardless of what the current working directory is.
+template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'templates'))
+app_flask = Flask(__name__, template_folder=template_dir)
+
 command_router = None
 log_subscribers = []
 _log_subscribers_lock = threading.Lock()
@@ -33,11 +37,17 @@ def broadcast_command_result(request_id, text):
 
 @app_flask.route('/')
 def index():
-    commands = command_router.list_commands_grouped() if command_router else []
-    task_name = None
-    if command_router and command_router.app:
-        task_name = command_router.app.taskManager.current_task_name
-    return render_template('index.html', commands_grouped=commands, current_task=task_name)
+    try:
+        commands = command_router.list_commands_grouped() if command_router else []
+        task_name = None
+        if command_router and command_router.app:
+            task_name = command_router.app.taskManager.current_task_name
+        return render_template('index.html', commands_grouped=commands, current_task=task_name)
+    except Exception as e:
+        import traceback
+        log(f"[web] Error rendering index: {str(e)}")
+        log(traceback.format_exc())
+        return str(e), 500
 
 
 @app_flask.route('/api/commands')
