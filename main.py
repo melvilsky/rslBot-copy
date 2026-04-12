@@ -349,11 +349,39 @@ def main():
                             except Exception:
                                 pass
 
+                    # Send same profile selection to Web UI
+                    try:
+                        from web.server import broadcast_command_result
+                        names = list_profile_filenames()
+                        if names:
+                            buttons = [[{'text': n, 'callback_data': f'loadconfig:{i}'}] for i, n in enumerate(names)]
+                            broadcast_command_result('startup', {
+                                'text': 'Обнаружена папка profiles. Выберите конфиг для загрузки:',
+                                'buttons': buttons,
+                            })
+                    except Exception:
+                        pass
+
                 log('[startup] Starting bot polling (listen)...')
                 telegram_bot.listen()
             else:
                 # No Telegram token — block the main thread so Web and CLI keep running
                 log('[startup] No Telegram token. Web and CLI are running. Press Ctrl+C to exit.')
+
+                # Send profile selection to Web UI
+                if has_profile_mode():
+                    try:
+                        from web.server import broadcast_command_result
+                        names = list_profile_filenames()
+                        if names:
+                            buttons = [[{'text': n, 'callback_data': f'loadconfig:{i}'}] for i, n in enumerate(names)]
+                            broadcast_command_result('startup', {
+                                'text': 'Обнаружена папка profiles. Выберите конфиг для загрузки:',
+                                'buttons': buttons,
+                            })
+                    except Exception:
+                        pass
+
                 threading.Event().wait()
 
         except KeyboardInterrupt:
