@@ -303,6 +303,24 @@ header h1 {
     margin-right: 8px;
 }
 
+.log-tag {
+    display: inline-block;
+    font-weight: 700;
+    margin-right: 4px;
+    padding: 0 3px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+}
+
+.log-tag-startup { color: #a29bfe; }
+.log-tag-web     { color: #74b9ff; }
+.log-tag-cli     { color: #55efc4; }
+.log-tag-error   { color: var(--danger); }
+.log-tag-warning { color: var(--warning); }
+.log-tag-info    { color: #81ecec; }
+.log-tag-response{ color: #00cec9; }
+.log-tag-default { color: var(--text-muted); }
+
 .response-toast {
     position: fixed;
     bottom: 20px;
@@ -418,6 +436,12 @@ var pendingCommandRequestId = null;
 var pendingCommandTimer = null;
 var lastCommandName = '';
 
+function escapeHtml(text) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+}
+
 function clearPendingCommand() {
     pendingCommandRequestId = null;
     if (pendingCommandTimer) {
@@ -426,11 +450,31 @@ function clearPendingCommand() {
     }
 }
 
+// Map of [tag] -> CSS class
+var LOG_TAG_CLASSES = {
+    'startup':  'log-tag-startup',
+    'web':      'log-tag-web',
+    'cli':      'log-tag-cli',
+    'error':    'log-tag-error',
+    'warning':  'log-tag-warning',
+    'warn':     'log-tag-warning',
+    'info':     'log-tag-info',
+    'response': 'log-tag-response',
+};
+
+function colorizeLogTag(text) {
+    // Colorize all [tag] tokens in the log line
+    return escapeHtml(text).replace(/\[([^\]]+)\]/g, function(bracket, tag) {
+        var cls = LOG_TAG_CLASSES[tag.toLowerCase()] || 'log-tag-default';
+        return '<span class="log-tag ' + cls + '">' + bracket + '</span>';
+    });
+}
+
 function addLog(text) {
     var line = document.createElement('div');
     line.className = 'log-line';
     var now = new Date().toLocaleTimeString();
-    line.innerHTML = '<span class="ts">' + now + '</span>' + parseBotHtml(text);
+    line.innerHTML = '<span class="ts">' + now + '</span>' + colorizeLogTag(String(text));
     logOutput.appendChild(line);
     logOutput.scrollTop = logOutput.scrollHeight;
 
@@ -501,11 +545,7 @@ function parseBotHtml(text) {
         .replace(/&lt;pre&gt;(.*?)&lt;\/pre&gt;/gi, '<pre>$1</pre>');
 }
 
-function escapeHtml(text) {
-    var d = document.createElement('div');
-    d.textContent = text;
-    return d.innerHTML;
-}
+// escapeHtml defined above (near top of script block)
 
 function clearLogs() {
     logOutput.innerHTML = '';
