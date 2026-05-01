@@ -348,7 +348,7 @@ class ArenaFactory(Location):
 
             if refilled:
                 sleep(2)
-                pyautogui.press('escape')
+                click(_x, _y)
                 sleep(1)
 
         response = self.awaits([self.E_BUTTON_REFRESH, self.E_TERMINATE, self.E_REFRESH_TIMEOUT])
@@ -374,6 +374,18 @@ class ArenaFactory(Location):
         def click_on_refill():
             click(refill_click_coord[0], refill_click_coord[1])
             sleep(0.5)
+
+        # ВАЖНО: не пытаться "рефиллить", если диалог докупки не открыт.
+        # Иначе ложное срабатывание find_needle_refill_ruby() может привести к
+        # преждевременному `terminated=True` даже при наличии жетонов.
+        _rf_mistake = get_arena_mistake(_shared, 'refill_free', 15)
+        _rp_mistake = get_arena_mistake(_shared, 'refill_paid', 15)
+        refill_dialog_visible = (
+            pixel_check_new(refill_free, mistake=_rf_mistake, label="refill_free_visible")
+            or pixel_check_new(refill_paid, mistake=_rp_mistake, label="refill_paid_visible")
+        )
+        if not refill_dialog_visible:
+            return False
 
         sleep(1)
         ruby_button = find_needle_refill_ruby()
