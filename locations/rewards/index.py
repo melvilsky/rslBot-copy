@@ -120,14 +120,21 @@ class Rewards(Location):
                         sleep(1.5)
 
     def play_time_obtain(self):
-        position = get_red_dot()
-        while position is not None:
+        CLAIM_ALL_BUTTON = [704, 476, [171, 111, 0]]
+
+        sleep(1)
+        if pixel_check_new(CLAIM_ALL_BUTTON, mistake=20):
+            click(704, 476)
             self._record_reward('play_time')
-            x = position[0]
-            y = position[1]
-            click(x, y)
-            sleep(.5)
-            position = get_red_dot()
+            sleep(1)
+        else:
+            sleep(2)
+            if pixel_check_new(CLAIM_ALL_BUTTON, mistake=20):
+                click(704, 476)
+                self._record_reward('play_time')
+                sleep(1)
+
+        close_popup_recursive()
 
     def quests_run(self):
         if is_index_page():
@@ -144,14 +151,12 @@ class Rewards(Location):
 
     def play_time_run(self):
         if is_index_page():
-            x = 860
-            y = 408
-            if pixel_check_new([x, y, RGB_INDICATOR], mistake=20):
-                # enter
-                click(x, y)
+            PLAY_TIME_INDICATOR = [844, 441, [177, 140, 56]]
+            if pixel_check_new(PLAY_TIME_INDICATOR, mistake=20):
+                click(844, 441)
                 sleep(1)
-                # obtain
                 self.play_time_obtain()
+                close_popup_recursive()
             else:
                 self.log('Play-Time rewards are not available')
         else:
