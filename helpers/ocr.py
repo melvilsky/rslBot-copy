@@ -7,8 +7,9 @@ import pyautogui
 import pytesseract
 from PIL import Image
 
-from helpers.logging_utils import log, log_save, sleep
-from helpers.screen import axis_to_region, screenshot_to_image
+from helpers.logging_utils import is_debug_mode, log, log_save, sleep
+from helpers.screen import axis_to_region, screenshot_to_image, show_image
+from helpers.utils import get_higher_occurrence
 from helpers.mouse import move_out_cursor
 from helpers.vision import (
     find_bank_arena_classic,
@@ -340,4 +341,3 @@ def read_doom_tower_keys(key_type='golden'):
     region = axis_to_region(x1, 38, x2, 56)
 
     return read_keys_bank(region=region, key=key_type)
-

@@ -6,7 +6,7 @@ import pyautogui
 from helpers.logging_utils import log, sleep
 from helpers.mouse import await_click, click, random_easying, tap_to_continue
 from helpers.popups import click_on_progress_info
-from helpers.vision import pixel_check_new, pixel_wait, pixels_wait
+from helpers.vision import find_needle_battles, pixel_check_new, pixel_wait, pixels_every, pixels_wait
 
 def waiting_battle_end_regular(msg, timeout=5, x=20, y=46):
     return pixel_wait(msg, x, y, [255, 255, 255], timeout, mistake=10)

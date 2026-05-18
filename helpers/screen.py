@@ -6,7 +6,7 @@ import np
 import pyautogui
 from PIL import Image
 
-from helpers.logging_utils import folder_ensure, get_time_for_log, is_debug_mode, log
+from helpers.logging_utils import folder_ensure, format_string_for_log, get_time_for_log, is_debug_mode, log
 
 _pixel_check_screenshot_times = {}
 
@@ -337,4 +337,3 @@ def dominant_color_rgb(region, rank=1, reverse=True):
         res.reverse()
 
     return res
-

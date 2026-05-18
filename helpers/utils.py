@@ -1,7 +1,9 @@
 import copy
+import random
 import re
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import np
 from constants.index import BORDER_WIDTH, WINDOW_SIZE, WINDOW_TOP_BAR_HEIGHT
@@ -126,4 +128,3 @@ def get_result(rgb):
 
 def get_time_future(**kwargs):
     return datetime.now() + timedelta(**kwargs)
-

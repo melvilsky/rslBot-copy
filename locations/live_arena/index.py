@@ -14,6 +14,7 @@ from helpers.game_actions import (
     calculate_win_rate,
     claim_rewards,
     click_on_progress_info,
+    enable_auto_play,
 )
 from helpers.logging_utils import get_time_for_log, is_debug_mode, log, log_save
 from helpers.mouse import await_click, click, tap_to_continue
@@ -23,6 +24,7 @@ from helpers.vision import (
     find_indicator_active,
     find_indicator_inactive,
     find_needle_refill_ruby,
+    find_victory_opponent_left,
     pixel_check_new,
     pixels_every,
     pixels_wait,

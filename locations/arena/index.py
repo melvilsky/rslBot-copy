@@ -14,6 +14,7 @@ from helpers.game_actions import (
 )
 from helpers.logging_utils import log
 from helpers.mouse import await_click, click, swipe, swipe_new, tap_to_continue
+from helpers.ocr import read_bank_arena_classic, read_bank_arena_tag
 from helpers.vision import (
     find_needle_arena_reward,
     find_needle_refill_ruby,
