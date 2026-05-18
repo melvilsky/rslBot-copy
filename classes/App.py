@@ -20,6 +20,8 @@ from helpers.vision import (
 )
 from helpers.common import (
     is_number,
+    make_command_key,
+    make_title,
     prepare_event,
     sleep,
 )
@@ -240,19 +242,6 @@ def prepare_window():
         raise Exception("Game windows is NOT prepared")
 
     return win
-
-
-def make_command_key(input_string):
-    # Remove special characters and convert to lowercase
-    clean_string = re.sub(r'[^a-zA-Z0-9\s]', '', input_string).lower()
-    # Replace spaces with underscores
-    formatted_string = clean_string.replace(' ', '_')
-    return formatted_string
-
-
-def make_title(input_string):
-    return input_string.replace('_', ' ').title()
-
 
 
 class App(Foundation):
