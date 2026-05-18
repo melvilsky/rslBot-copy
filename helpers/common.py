@@ -12,9 +12,8 @@ import json
 import re
 import cv2
 from datetime import datetime
-from constants.index import IS_DEV
-from helpers.time_mgr import *
-from constants.index import *
+from constants.index import BORDER_WIDTH, IS_DEV, WINDOW_SIZE, WINDOW_TOP_BAR_HEIGHT
+from helpers.time_mgr import TimeMgr
 
 # Debug State Management
 _DEBUG_MODE = False

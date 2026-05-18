@@ -202,12 +202,6 @@ def copy_files():
         shutil.rmtree(needles_dest)
     shutil.copytree('images/needles', needles_dest)
     
-    # Копируем translations
-    translations_dest = os.path.join(main_dir, 'translations')
-    if os.path.exists(translations_dest):
-        shutil.rmtree(translations_dest)
-    shutil.copytree('translations', translations_dest)
-    
     # Копируем coordinates (координаты для различных локаций)
     coordinates_dest = os.path.join(main_dir, 'coordinates')
     if os.path.exists('coordinates'):

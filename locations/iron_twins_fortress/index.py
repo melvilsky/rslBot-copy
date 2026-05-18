@@ -1,57 +1,30 @@
-import os
-import json
+import pyautogui
 
-from helpers.common import *
+from helpers.common import sleep
+from helpers.game_actions import (
+    calculate_win_rate,
+    click_on_progress_info,
+    dungeons_click_stage_select,
+    dungeons_continue_battle,
+    dungeons_scroll,
+    waiting_battle_end_regular,
+)
+from helpers.mouse import click
+from helpers.popups import close_popup
+from helpers.vision import (
+    find_needle_refill_ruby,
+    pixel_check_new,
+)
+from helpers.coordinates import get_coordinate, get_mistake, load_coordinates
 from classes.Location import Location
 
 TWIN_KEYS_LIMIT = 6
 
 
-def load_iron_twins_coordinates():
-    """Загружает координаты из файла coordinates/iron_twins.json"""
-    try:
-        coords_path = os.path.join('coordinates', 'iron_twins.json')
-        if os.path.exists(coords_path):
-            with open(coords_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return None
-    except Exception as e:
-        print(f"Ошибка загрузки координат из coordinates/iron_twins.json: {e}")
-        return None
+_coordinates_data = load_coordinates('iron_twins.json', required=True)
 
-
-def get_iron_twins_coordinate(data, key):
-    """
-    Получает координату из загруженного JSON.
-    Returns: [x, y, [r, g, b]] если есть rgb, иначе [x, y]
-    Raises: ValueError если ключ не найден
-    """
-    if not data or key not in data:
-        raise ValueError(f"Coordinate '{key}' not found in coordinates/iron_twins.json")
-    coord = data[key]
-    if 'rgb' in coord:
-        return [coord['x'], coord['y'], coord['rgb']]
-    return [coord['x'], coord['y']]
-
-
-def get_iron_twins_mistake(data, key, default=20):
-    """Получает значение mistake (погрешность) из JSON"""
-    if data and key in data:
-        coord = data[key]
-        if isinstance(coord, dict):
-            return coord.get('mistake', default)
-    return default
-
-
-_coordinates_data = load_iron_twins_coordinates()
-if _coordinates_data is None:
-    raise RuntimeError(
-        'Не найден файл coordinates/iron_twins.json. '
-        'Скопируйте его из репозитория или восстановите.'
-    )
-
-super_raids_coord = get_iron_twins_coordinate(_coordinates_data, 'super_raids')
-super_raids_mistake = get_iron_twins_mistake(_coordinates_data, 'super_raids', 10)
+super_raids_coord = get_coordinate(_coordinates_data, 'super_raids', source='coordinates/iron_twins.json')
+super_raids_mistake = get_mistake(_coordinates_data, 'super_raids', 10)
 super_raids_rgb_disabled = _coordinates_data['super_raids'].get('rgb_disabled', [8, 20, 24])
 
 # @TODO Refactor is needed

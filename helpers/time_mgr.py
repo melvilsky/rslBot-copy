@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from time import gmtime, localtime
-from helpers.common import *
+import time
 import pause
 
 FIELD_NAMES = [

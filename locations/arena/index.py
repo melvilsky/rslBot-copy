@@ -1,9 +1,35 @@
-import os
-import json
+import pyautogui
 
-from helpers.common import *
+from helpers.common import (
+    debug_save_screenshot,
+    is_debug_mode,
+    prepare_event,
+    sleep,
+)
+from helpers.game_actions import (
+    calculate_win_rate,
+    click_on_progress_info,
+    enable_start_on_auto,
+    waiting_battle_end_regular,
+)
+from helpers.logging_utils import log
+from helpers.mouse import await_click, click, swipe, swipe_new, tap_to_continue
+from helpers.vision import (
+    find_needle_arena_reward,
+    find_needle_refill_ruby,
+    pixel_check_new,
+    pixels_wait,
+)
+from helpers.coordinates import (
+    get_coordinate,
+    get_mistake,
+    get_score_config,
+    load_coordinates,
+    parse_button_locations,
+    parse_point,
+    require_coordinate_files,
+)
 from helpers.refill_state import get_remaining_refills, increment_purchase
-from constants.index import *
 from classes.Location import Location
 
 # ============================================================================
@@ -14,90 +40,35 @@ from classes.Location import Location
 # Для изменения координат отредактируйте JSON и перезапустите приложение
 # ============================================================================
 
-
-def load_arena_coordinates(filename):
-    """Загружает координаты из JSON файла в папке coordinates/"""
-    try:
-        coords_path = os.path.join('coordinates', filename)
-        if os.path.exists(coords_path):
-            with open(coords_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return None
-    except Exception as e:
-        print(f"Ошибка загрузки координат из coordinates/{filename}: {e}")
-        return None
-
-
-def get_arena_coordinate(data, key):
-    """
-    Получает координату из загруженного JSON.
-    Returns: [x, y, [r, g, b]] если есть rgb, иначе [x, y]
-    Raises: ValueError если ключ не найден
-    """
-    if not data or key not in data:
-        raise ValueError(f"Coordinate '{key}' not found in arena coordinates JSON")
-    coord = data[key]
-    if 'rgb' in coord:
-        return [coord['x'], coord['y'], coord['rgb']]
-    return [coord['x'], coord['y']]
-
-
-def get_arena_mistake(data, key, default=20):
-    """Получает значение mistake (погрешность) из JSON"""
-    if data and key in data:
-        coord = data[key]
-        if isinstance(coord, dict):
-            return coord.get('mistake', default)
-    return default
-
-
-def _parse_button_locations(data, key):
-    """Конвертирует button_locations из JSON формата {str: {x,y}} в {int: [x,y]}"""
-    bl = data[key]
-    return {int(k): [v['x'], v['y']] for k, v in bl.items()}
-
-
-def _parse_point(data, key):
-    """Конвертирует {x, y} из JSON в [x, y]"""
-    p = data[key]
-    return [p['x'], p['y']]
-
-
 # Загружаем координаты при импорте модуля
-_shared = load_arena_coordinates('arena_shared.json')
-_tag_data = load_arena_coordinates('arena_tag.json')
-_classic_data = load_arena_coordinates('arena_classic.json')
-
-# Проверка наличия обязательных JSON (без них арена неработоспособна)
-_missing = []
-if _shared is None:
-    _missing.append('coordinates/arena_shared.json')
-if _tag_data is None:
-    _missing.append('coordinates/arena_tag.json')
-if _classic_data is None:
-    _missing.append('coordinates/arena_classic.json')
-if _missing:
-    raise RuntimeError(
-        'Не найдены файлы координат арены: {}. '
-        'Скопируйте их из репозитория или восстановите.'.format(', '.join(_missing))
-    )
+require_coordinate_files('arena_shared.json', 'arena_tag.json', 'arena_classic.json')
+_shared = load_coordinates('arena_shared.json', required=True)
+_tag_data = load_coordinates('arena_tag.json', required=True)
+_classic_data = load_coordinates('arena_classic.json', required=True)
 
 # Общие координаты ArenaFactory (из arena_shared.json)
-button_refresh = get_arena_coordinate(_shared, 'button_refresh')
-refill_free = get_arena_coordinate(_shared, 'refill_free')
-refill_paid = get_arena_coordinate(_shared, 'refill_paid')
-defeat = get_arena_coordinate(_shared, 'defeat')
-tab_battle = get_arena_coordinate(_shared, 'tab_battle')
-battle_end_coord = get_arena_coordinate(_shared, 'battle_end')
-start_battle_coord = get_arena_coordinate(_shared, 'start_battle')
-refill_click_coord = get_arena_coordinate(_shared, 'refill_click')
-claim_chest_coord = get_arena_coordinate(_shared, 'claim_chest')
+button_refresh = get_coordinate(_shared, 'button_refresh', source='coordinates/arena_shared.json')
+refill_free = get_coordinate(_shared, 'refill_free', source='coordinates/arena_shared.json')
+refill_paid = get_coordinate(_shared, 'refill_paid', source='coordinates/arena_shared.json')
+refill_ruby = get_coordinate(_shared, 'refill_ruby', source='coordinates/arena_shared.json')
+defeat = get_coordinate(_shared, 'defeat', source='coordinates/arena_shared.json')
+tab_battle = get_coordinate(_shared, 'tab_battle', source='coordinates/arena_shared.json')
+battle_end_coord = get_coordinate(_shared, 'battle_end', source='coordinates/arena_shared.json')
+start_battle_coord = get_coordinate(_shared, 'start_battle', source='coordinates/arena_shared.json')
+refill_click_coord = get_coordinate(_shared, 'refill_click', source='coordinates/arena_shared.json')
+claim_chest_coord = get_coordinate(_shared, 'claim_chest', source='coordinates/arena_shared.json')
 swipe_attack_coord = _shared['swipe_attack']
 swipe_refresh_coord = _shared['swipe_refresh']
 swipe_reward_coord = _shared['swipe_reward']
 
 RGB_RED_DOT = _shared['red_dot_rgb']
 ATTACK_BUTTON_RGB = _shared['attack_button_rgb']
+REFILL_POPUP_POINTS, REFILL_POPUP_MISTAKE, REFILL_POPUP_MIN_SCORE = get_score_config(
+    _shared,
+    'refill_popup',
+    default_mistake=20,
+    default_min_score=4
+)
 PAID_REFILL_LIMIT = 0
 OUTPUT_ITEMS_AMOUNT = 10
 
@@ -212,7 +183,7 @@ class ArenaFactory(Location):
 
         self._apply_props(props=props)
 
-        _be_mistake = get_arena_mistake(_shared, 'battle_end', 3)
+        _be_mistake = get_mistake(_shared, 'battle_end', 3)
         self.E_BATTLE_END = prepare_event(self.E_BATTLE_END, {
             "expect": lambda: pixel_check_new(battle_end_coord, mistake=_be_mistake)
         })
@@ -375,22 +346,46 @@ class ArenaFactory(Location):
             click(refill_click_coord[0], refill_click_coord[1])
             sleep(0.5)
 
+        def _score_pixels(points, mistake, label):
+            matched = 0
+            for index, point in enumerate(points):
+                if pixel_check_new(point, mistake=mistake, label=f"{label}_{index + 1}"):
+                    matched += 1
+            return matched
+
+        def is_refill_popup_visible():
+            if REFILL_POPUP_POINTS:
+                matched = _score_pixels(REFILL_POPUP_POINTS, REFILL_POPUP_MISTAKE, "refill_popup")
+                if matched or is_debug_mode():
+                    self.log(
+                        f"Refill popup score: {matched}/{len(REFILL_POPUP_POINTS)} "
+                        f"(need {REFILL_POPUP_MIN_SCORE})"
+                    )
+                if matched >= REFILL_POPUP_MIN_SCORE:
+                    return True
+
+            _rf_mistake = get_mistake(_shared, 'refill_free', 15)
+            _rp_mistake = get_mistake(_shared, 'refill_paid', 15)
+            return (
+                pixel_check_new(refill_free, mistake=_rf_mistake, label="refill_free_visible")
+                or pixel_check_new(refill_paid, mistake=_rp_mistake, label="refill_paid_visible")
+            )
+
+        def is_ruby_refill_visible():
+            ruby_mistake = get_mistake(_shared, 'refill_ruby', 40)
+            if pixel_check_new(refill_ruby, mistake=ruby_mistake, label="refill_ruby_visible"):
+                return True
+            return find_needle_refill_ruby() is not None
+
         # ВАЖНО: не пытаться "рефиллить", если диалог докупки не открыт.
         # Иначе ложное срабатывание find_needle_refill_ruby() может привести к
         # преждевременному `terminated=True` даже при наличии жетонов.
-        _rf_mistake = get_arena_mistake(_shared, 'refill_free', 15)
-        _rp_mistake = get_arena_mistake(_shared, 'refill_paid', 15)
-        refill_dialog_visible = (
-            pixel_check_new(refill_free, mistake=_rf_mistake, label="refill_free_visible")
-            or pixel_check_new(refill_paid, mistake=_rp_mistake, label="refill_paid_visible")
-        )
-        if not refill_dialog_visible:
+        if not is_refill_popup_visible():
             return False
 
         sleep(1)
-        ruby_button = find_needle_refill_ruby()
 
-        if ruby_button is not None:
+        if is_ruby_refill_visible():
             self.log('Free coins are NOT available')
             if self.refill > 0:
                 location_key = self.NAME.lower().replace(' ', '_')
@@ -523,7 +518,7 @@ class ArenaFactory(Location):
                 break
 
             self.log('Function: enable_quick_battle')
-            _qb_mistake = get_arena_mistake(_tag_data, 'quick_battle', 10)
+            _qb_mistake = get_mistake(_tag_data, 'quick_battle', 10)
             await_click([self.quick_battle_coord], mistake=_qb_mistake, wait_limit=1)
 
             if is_debug_mode():
@@ -558,8 +553,8 @@ class ArenaFactory(Location):
                     break
 
             # TAP TO CONTINUE
-            _ttc_mistake = get_arena_mistake(_tag_data, 'tap_to_continue', 35)
-            _rta_mistake = get_arena_mistake(_tag_data, 'return_to_arena', 30)
+            _ttc_mistake = get_mistake(_tag_data, 'tap_to_continue', 35)
+            _rta_mistake = get_mistake(_tag_data, 'return_to_arena', 30)
             E_TAP_TO_CONTINUE = {
                 "name": "TapToContinue",
                 "interval": 2,
@@ -754,10 +749,10 @@ class ArenaClassic(ArenaFactory):
             x_axis_info=_classic_data['x_axis_info'],
             read_coins_predicate=read_bank_arena_classic,
             item_height=_classic_data['item_height'],
-            button_locations=_parse_button_locations(_classic_data, 'button_locations'),
+            button_locations=parse_button_locations(_classic_data, 'button_locations'),
             item_locations=CLASSIC_ITEM_LOCATIONS,
-            refill_coordinates=_parse_point(_classic_data, 'coins_refill'),
-            tiers_coordinates=_parse_point(_classic_data, 'tiers_coordinate'),
+            refill_coordinates=parse_point(_classic_data, 'coins_refill'),
+            tiers_coordinates=parse_point(_classic_data, 'tiers_coordinate'),
             props=props
         )
 
@@ -771,12 +766,12 @@ class ArenaTag(ArenaFactory):
             x_axis_info=_tag_data['x_axis_info'],
             read_coins_predicate=read_bank_arena_tag,
             item_height=_tag_data['item_height'],
-            button_locations=_parse_button_locations(_tag_data, 'button_locations'),
+            button_locations=parse_button_locations(_tag_data, 'button_locations'),
             item_locations=TAG_ITEM_LOCATIONS,
-            refill_coordinates=_parse_point(_tag_data, 'coins_refill'),
-            tiers_coordinates=_parse_point(_tag_data, 'tiers_coordinate'),
+            refill_coordinates=parse_point(_tag_data, 'coins_refill'),
+            tiers_coordinates=parse_point(_tag_data, 'tiers_coordinate'),
             props=props
         )
-        self.quick_battle_coord = get_arena_coordinate(_tag_data, 'quick_battle')
-        self.tap_to_continue_coord = get_arena_coordinate(_tag_data, 'tap_to_continue')
-        self.return_to_arena_coord = get_arena_coordinate(_tag_data, 'return_to_arena')
+        self.quick_battle_coord = get_coordinate(_tag_data, 'quick_battle', source='coordinates/arena_tag.json')
+        self.tap_to_continue_coord = get_coordinate(_tag_data, 'tap_to_continue', source='coordinates/arena_tag.json')
+        self.return_to_arena_coord = get_coordinate(_tag_data, 'return_to_arena', source='coordinates/arena_tag.json')

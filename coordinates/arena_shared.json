@@ -32,6 +32,74 @@
     "mistake": 10,
     "description": "Кнопка платного рефилла"
   },
+  "refill_popup": {
+    "points": [
+      {
+        "x": 446,
+        "y": 142,
+        "rgb": [
+          92,
+          103,
+          77
+        ],
+        "description": "Верхняя часть refill popup"
+      },
+      {
+        "x": 294,
+        "y": 190,
+        "rgb": [
+          15,
+          48,
+          62
+        ],
+        "description": "Тёмное тело refill popup слева"
+      },
+      {
+        "x": 625,
+        "y": 187,
+        "rgb": [
+          15,
+          48,
+          62
+        ],
+        "description": "Тёмное тело refill popup справа"
+      },
+      {
+        "x": 439,
+        "y": 243,
+        "rgb": [
+          80,
+          153,
+          55
+        ],
+        "description": "Центральная refill иконка"
+      },
+      {
+        "x": 294,
+        "y": 383,
+        "rgb": [
+          8,
+          74,
+          107
+        ],
+        "description": "Нижняя синяя часть refill popup"
+      }
+    ],
+    "min_score": 4,
+    "mistake": 20,
+    "description": "Score-проверка окна refill popup для Arena Classic/Tag"
+  },
+  "refill_ruby": {
+    "x": 441,
+    "y": 379,
+    "rgb": [
+      224,
+      20,
+      16
+    ],
+    "mistake": 40,
+    "description": "Проверка рубина внутри refill popup; используется только после подтверждения popup"
+  },
   "defeat": {
     "x": 443,
     "y": 51,

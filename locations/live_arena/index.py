@@ -1,91 +1,63 @@
 import pyautogui
 import pause
 import copy
-import os
-import json
+import random
+from datetime import datetime, timezone
 from PIL import Image, ImageDraw
 
-from helpers.common import is_debug_mode, log_save
-from helpers.time_mgr import *
+from helpers.common import (
+    find,
+    prepare_event,
+    sleep,
+)
+from helpers.game_actions import (
+    calculate_win_rate,
+    claim_rewards,
+    click_on_progress_info,
+)
+from helpers.logging_utils import get_time_for_log, is_debug_mode, log, log_save
+from helpers.mouse import await_click, click, tap_to_continue
+from helpers.screen import debug_save_screenshot, show_pyautogui_image
+from helpers.vision import (
+    find_hero_slot_empty,
+    find_indicator_active,
+    find_indicator_inactive,
+    find_needle_refill_ruby,
+    pixel_check_new,
+    pixels_every,
+    pixels_wait,
+    rgb_check,
+    same_pixels_line,
+)
+from helpers.coordinates import get_coordinate, get_mistake, load_coordinates
+from helpers.time_mgr import TimeMgr
 from helpers.refill_state import get_remaining_refills, increment_purchase
-from locations.hero_filter.index import *
+from locations.hero_filter.index import HeroFilter
 from classes.Location import Location
 
 # ============================================================================
 # КООРДИНАТЫ ХРАНЯТСЯ В: coordinates/live_arena.json
 # Для изменения координат отредактируйте этот файл и перезапустите приложение
 # ============================================================================
-
-def load_live_arena_coordinates():
-    """
-    Загружает координаты из файла coordinates/live_arena.json
-    Возвращает словарь с координатами или None в случае ошибки
-    """
-    try:
-        # Путь к файлу координат (работает и в разработке, и в собранном приложении)
-        coords_path = os.path.join('coordinates', 'live_arena.json')
-        
-        if os.path.exists(coords_path):
-            with open(coords_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        else:
-            # Если файл не найден, возвращаем None (будем использовать дефолтные значения)
-            return None
-    except Exception as e:
-        log_save(f"Ошибка загрузки координат из {coords_path}: {e}")
-        return None
-
 # Загружаем координаты при импорте модуля
-_coordinates_data = load_live_arena_coordinates()
+_coordinates_data = load_coordinates('live_arena.json', required=True)
 
-# Функция для получения координат из JSON (без дефолтных значений)
-def get_coordinate(key):
-    """
-    Получает координаты из загруженного JSON.
-    Выбрасывает ошибку, если координаты не найдены.
-    
-        Args:
-        key: ключ в JSON (например, 'claim_free_refill_coins')
-    
-    Returns:
-        [x, y, [r, g, b]] - координаты и RGB
-    
-    Raises:
-        ValueError: если координаты не найдены в JSON
-    """
-    if not _coordinates_data:
-        raise ValueError(f"Coordinates data not loaded from JSON file. Key '{key}' not found.")
-    
-    if key not in _coordinates_data:
-        raise ValueError(f"Coordinate '{key}' not found in coordinates/live_arena.json. Please add it to the JSON file.")
-    
-    coord = _coordinates_data[key]
-    result = [coord['x'], coord['y'], coord['rgb']]
+
+def get_live_arena_coordinate(key):
+    result = get_coordinate(_coordinates_data, key, source='coordinates/live_arena.json', require_rgb=True)
     log_save(f"Loaded coordinate '{key}' from JSON: {result}")
     return result
 
+
 def get_coordinate_mistake(key, default_mistake=20):
-    """
-    Получает значение mistake (погрешность) для координат из JSON
-    
-        Args:
-        key: ключ в JSON (например, 'claim_free_refill_coins')
-        default_mistake: дефолтное значение mistake
-    
-    Returns:
-        int - значение mistake
-    """
-    if _coordinates_data and key in _coordinates_data:
-        coord = _coordinates_data[key]
-        return coord.get('mistake', default_mistake)
-    return default_mistake
+    return get_mistake(_coordinates_data, key, default_mistake)
 
 # Загружаем координаты из coordinates/live_arena.json
 # Все координаты должны быть указаны в JSON файле, дефолтных значений нет
-CLAIM_FREE_REFILL_COINS = get_coordinate('claim_free_refill_coins')
-claim_chest = get_coordinate('claim_chest')
-refill_free = get_coordinate('refill_free')
-refill_paid = get_coordinate('refill_paid')
+CLAIM_FREE_REFILL_COINS = get_live_arena_coordinate('claim_free_refill_coins')
+claim_chest = get_live_arena_coordinate('claim_chest')
+refill_free = get_live_arena_coordinate('refill_free')
+refill_paid = get_live_arena_coordinate('refill_paid')
 
 time_mgr = TimeMgr()
 hero_filter = HeroFilter()

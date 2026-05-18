@@ -222,7 +222,7 @@ python -c "import PyInstaller; print('PyInstaller module found')"
 
 1. **`RaidSL-Telegram-Bot` (~129 MB)**
    - ZIP архив `RaidSL-Telegram-Bot.zip`
-   - Включает exe, DLL, зависимости, images, translations, config.json
+   - Включает exe, DLL, зависимости, images, coordinates, config.json
    - Готов к скачиванию и использованию
 
 ---
@@ -307,4 +307,3 @@ yamllint .github/workflows/build.yml
 
 *Документ создан: 2025 год*
 *Последнее обновление: после успешной настройки workflow*
-

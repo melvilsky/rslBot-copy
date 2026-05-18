@@ -140,18 +140,17 @@ class Hydra(Location):
         })
 
     def _cb_clash_not_started(self, *args):
-        if self.app.config['lang']:
-            # Reliable search of button with "continue" text
-            btn_continue = find_detected_button({'text': 'continue'}, detect_buttons(lang=self.app.config['lang']))
-            if btn_continue:
-                click_detected_button(btn_continue)
-        else:
-            # Not Reliable checking for two buttons (one of them with "continue" text)
-            if same_pixels_line_list([
-                P_POPUP_CLASH_NOT_STARTED_BTN_CANCEL,
-                P_POPUP_CLASH_NOT_STARTED_BTN_CONTINUE
-            ]):
-                await_click([P_POPUP_CLASH_NOT_STARTED_BTN_CONTINUE], mistake=10)
+        btn_continue = find_detected_button({'text': 'continue'}, detect_buttons(lang='eng'))
+        if btn_continue:
+            click_detected_button(btn_continue)
+            return
+
+        # Not reliable checking for two buttons (one of them with "continue" text)
+        if same_pixels_line_list([
+            P_POPUP_CLASH_NOT_STARTED_BTN_CANCEL,
+            P_POPUP_CLASH_NOT_STARTED_BTN_CONTINUE
+        ]):
+            await_click([P_POPUP_CLASH_NOT_STARTED_BTN_CONTINUE], mistake=10)
 
 
     def _report(self):

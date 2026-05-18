@@ -1,8 +1,29 @@
-from helpers.common import *
+import json
+import time
+
+import pyautogui
 from helpers.updater import is_update_available, should_check_for_updates, launch_updater
 from classes.TaskManager import TaskManager
 from classes.Storage import Storage
-from classes.Foundation import *
+from classes.Foundation import Foundation
+from helpers.logging_utils import log, log_save, set_debug_mode
+from helpers.mouse import await_click, click, click_detected_button
+from helpers.popups import close_popup, close_popup_recursive, find_popup_error_detector
+from helpers.vision import (
+    detect_buttons,
+    detect_same_variant_buttons_and_return_one,
+    find_detected_button,
+    find_needle_burger,
+    find_needle_close_popup,
+    find_needle_popup_attention,
+    rgb_check,
+)
+from helpers.common import (
+    is_number,
+    prepare_event,
+    sleep,
+)
+from helpers.time_mgr import TimeMgr
 try:
     from classes.Recorder import Recorder
 except ImportError:
@@ -11,20 +32,38 @@ try:
     from telegram.error import BadRequest
 except ImportError:
     BadRequest = None
-from locations.rewards.index import *
-# from locations.live_arena.index_old import *
-from locations.live_arena.index import *
-from locations.arena.index import *
-from locations.demon_lord.index import *
-from locations.faction_wars.index import *
-from locations.iron_twins_fortress.index import *
-from locations.dungeons.index import *
-from locations.hydra.index import *
-from locations.doom_tower.index import *
-from locations.quests.index import *
-from locations.test.index import *
-from locations.test_await.index import *
-from constants.index import *
+from locations.rewards.index import Rewards
+from locations.live_arena.index import ArenaLive
+from locations.arena.index import ArenaClassic, ArenaTag
+from locations.demon_lord.index import DemonLord
+from locations.faction_wars.index import FactionWars
+from locations.iron_twins_fortress.index import IronTwins
+from locations.dungeons.index import Dungeons
+from locations.hydra.index import Hydra
+from locations.doom_tower.index import DoomTower
+from locations.quests.index import Quests
+from locations.test.index import TestFeature
+from locations.test_await.index import TestAwait
+from constants.index import (
+    BORDER_WIDTH,
+    CONFIG_DEFAULT_PATH,
+    CONFIG_PATH,
+    GAME_WINDOW,
+    PLAYER_ID_CLICK_1,
+    PLAYER_ID_CLICK_2,
+    PLAYER_ID_CLICK_3,
+    PLAYER_ID_DELAY_AFTER_COPY,
+    PLAYER_ID_DELAY_AFTER_FIRST,
+    PLAYER_ID_DELAY_BEFORE_FIRST,
+    PLAYER_ID_DELAY_BETWEEN_CLICKS,
+    PROCESS_GAME_NAME,
+    PROCESS_PLARIUM_PLAY_NAME,
+    PROCESS_PLARIUM_SERVICE_NAME,
+    PROFILES_DIR,
+    WINDOW_SIZE,
+    WINDOW_TOP_BAR_HEIGHT,
+    get_config_path,
+)
 import signal
 import sys
 import subprocess
@@ -51,15 +90,6 @@ INSTANCES_MAP = {
     'test_feature': TestFeature,
     'test_await': TestAwait,
 }
-SUPPORTED_LANGUAGES = ['eng', 'deu', 'ukr', 'rus']
-LANGUAGES_MATRIX = [
-    ['eng', None, 'deu'],
-    [None, None, None],
-    [None, None, None],
-    ['ukr', 'rus', None],
-    [None],
-]
-
 # EMULATE_NETWORK_ERROR = False
 
 def find_process_by_name(name):
@@ -239,8 +269,6 @@ class App(Foundation):
         self.entries = {}
         self.taskManager = TaskManager()
         self.timeManager = TimeMgr()
-        self.lang = None
-        self.translations = None
         self.scheduler = None
         self.telegram_bot = None  # Будет установлен из main.py
         self.recorder = Recorder() if Recorder else None
@@ -253,8 +281,6 @@ class App(Foundation):
         # Order is matters
         self.log('[init] Reading config...')
         self.read_config()
-        self.log('[init] Loading translations...')
-        self.load_translations()
         self.log('[init] Building commands...')
         self.commands = self.get_commands()
         self.log('[init] App instance ready')
@@ -311,11 +337,8 @@ class App(Foundation):
         })
 
     def _expect_relogin(self):
-        # Should return same format for both cases
-        if self.lang:
-            return find_detected_button({'text': self.translations['relogin']}, detect_buttons(lang=self.lang))
-        else:
-            return detect_same_variant_buttons_and_return_one(index=0, length=2)
+        button = find_detected_button({'text': 'relogin'}, detect_buttons(lang='eng'))
+        return button or detect_same_variant_buttons_and_return_one(index=0, length=2)
 
     def get_commands(self):
         return {
@@ -417,12 +440,6 @@ class App(Foundation):
         if 'telegram_token' in config_json:
             TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
             _config['telegram_token'] = TELEGRAM_BOT_TOKEN if TELEGRAM_BOT_TOKEN else str(config_json['telegram_token'])
-
-        _lang = str(config_json['lang']).lower() if 'lang' in config_json else None
-        LANG = os.getenv('LANG')
-        self.lang = LANG if LANG in SUPPORTED_LANGUAGES \
-            else _lang if _lang in SUPPORTED_LANGUAGES \
-            else None
 
         # Tasks
         tasks_length = len(config_json['tasks'])
@@ -1046,17 +1063,6 @@ class App(Foundation):
         if len(response):
             return msg_ctx.reply_text('\n'.join(response))
 
-    def determine_language(self):
-        close_popup_recursive()
-
-        click(40, 70, smart=True)
-
-        if await_click([[150, 346, [8, 73, 107]]], mistake=5, msg='Language Tab', timeout=1)[0]:
-            self.lang = self.detect_language()
-            self.log(f"Language detected: '{self.lang}'")
-
-        close_popup_recursive()
-
     def start(self):
         # atexit.register(self.report)
         signal.signal(signal.SIGINT, self.kill)
@@ -1124,12 +1130,6 @@ class App(Foundation):
             self.log('Calibrating the window')
             self.window_axis = calibrate_window(self.window_axis)
 
-        if not self.lang:
-            self.log('Determining the language')
-            self.determine_language()
-
-        self.load_translations()
-
     def get_entry(self, command_name):
         return self.entries[command_name] \
             if command_name in self.entries \
@@ -1161,37 +1161,3 @@ class App(Foundation):
             'onError': msg_ctx.reply_text,
             'type': task_type,
         })
-
-    def load_translations(self):
-        if self.lang and not self.translations:
-            PATH_TRANSLATIONS = f"./translations/{self.lang}.json"
-            try:
-                with open(PATH_TRANSLATIONS, encoding='utf-8') as translations_file:
-                    self.translations = json.load(translations_file)
-                    self.log(f"Translations loaded: '{self.lang}'")
-            except SystemError:
-                log('An error occurred while reading ' + PATH_TRANSLATIONS + ' file')
-
-    def detect_language(self):
-        RGB_NOT_SELECTED_BUTTON = [17, 51, 67]
-        x_offset = 209
-        y_offset = 93
-        btn_width = 208
-        btn_height = 53
-        x_gutter = 19
-        y_gutter = 15
-
-        lang = None
-
-        for row in range(len(LANGUAGES_MATRIX)):
-            for cell in range(len(LANGUAGES_MATRIX[row])):
-                lang_btn = LANGUAGES_MATRIX[row][cell]
-                if lang_btn and lang_btn in SUPPORTED_LANGUAGES:
-                    x_btn = int(x_offset + (btn_width + x_gutter) * cell) + 10
-                    y_btn = int(y_offset + (btn_height + y_gutter) * row) + 2
-
-                    if not rgb_check(RGB_NOT_SELECTED_BUTTON, pyautogui.pixel(x_btn, y_btn), mistake=10):
-                        lang = lang_btn
-                        break
-
-        return lang

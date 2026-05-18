@@ -3,7 +3,6 @@
   "debug": false,
   "game_path": "",
   "telegram_token": "",
-  "lang": "",
   "tasks": [
     {
       "task": "rewards",
