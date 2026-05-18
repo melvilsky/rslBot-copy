@@ -88,6 +88,62 @@
     "mistake": 20,
     "description": "Score-проверка рубина для определения платного рефилла"
   },
+  "refill_popup_tag": {
+    "points": [
+      {
+        "x": 281,
+        "y": 186,
+        "rgb": [15, 48, 62],
+        "description": "Tag Тёмное тело слева вверху"
+      },
+      {
+        "x": 601,
+        "y": 176,
+        "rgb": [15, 48, 62],
+        "description": "Tag Тёмное тело справа вверху"
+      },
+      {
+        "x": 287,
+        "y": 386,
+        "rgb": [8, 76, 107],
+        "description": "Tag Левая нижняя часть"
+      },
+      {
+        "x": 516,
+        "y": 401,
+        "rgb": [179, 125, 5],
+        "description": "Tag Желтая деталь внизу"
+      }
+    ],
+    "min_score": 3,
+    "mistake": 20,
+    "description": "Score-проверка окна refill popup для Arena Tag"
+  },
+  "refill_ruby_points_tag": {
+    "points": [
+      {
+        "x": 442,
+        "y": 396,
+        "rgb": [254, 139, 134],
+        "description": "Tag Рубин точка 1"
+      },
+      {
+        "x": 440,
+        "y": 407,
+        "rgb": [255, 244, 181],
+        "description": "Tag Рубин точка 2"
+      },
+      {
+        "x": 433,
+        "y": 398,
+        "rgb": [231, 51, 60],
+        "description": "Tag Рубин точка 3"
+      }
+    ],
+    "min_score": 2,
+    "mistake": 20,
+    "description": "Score-проверка рубина для определения платного рефилла в Arena Tag"
+  },
   "refill_ruby": {
     "x": 441,
     "y": 379,

@@ -76,6 +76,18 @@ REFILL_RUBY_POINTS, REFILL_RUBY_MISTAKE, REFILL_RUBY_MIN_SCORE = get_score_confi
     default_mistake=20,
     default_min_score=2
 )
+REFILL_POPUP_TAG_POINTS, REFILL_POPUP_TAG_MISTAKE, REFILL_POPUP_TAG_MIN_SCORE = get_score_config(
+    _shared,
+    'refill_popup_tag',
+    default_mistake=20,
+    default_min_score=3
+)
+REFILL_RUBY_TAG_POINTS, REFILL_RUBY_TAG_MISTAKE, REFILL_RUBY_TAG_MIN_SCORE = get_score_config(
+    _shared,
+    'refill_ruby_points_tag',
+    default_mistake=20,
+    default_min_score=2
+)
 TEAM_SETUP_POINTS, TEAM_SETUP_MISTAKE, TEAM_SETUP_MIN_SCORE = get_score_config(
     _shared,
     'team_setup',
@@ -96,15 +108,19 @@ def is_team_setup_visible():
         log(f"Team Setup popup score: {matched}/{len(TEAM_SETUP_POINTS)} (need {TEAM_SETUP_MIN_SCORE})")
     return matched >= TEAM_SETUP_MIN_SCORE
 
-def is_refill_popup_visible():
-    if REFILL_POPUP_POINTS:
+def is_refill_popup_visible(is_tag=False):
+    points = REFILL_POPUP_TAG_POINTS if is_tag else REFILL_POPUP_POINTS
+    mistake = REFILL_POPUP_TAG_MISTAKE if is_tag else REFILL_POPUP_MISTAKE
+    min_score = REFILL_POPUP_TAG_MIN_SCORE if is_tag else REFILL_POPUP_MIN_SCORE
+
+    if points:
         matched = 0
-        for index, point in enumerate(REFILL_POPUP_POINTS):
-            if pixel_check_new(point, mistake=REFILL_POPUP_MISTAKE, label=f"refill_popup_{index + 1}"):
+        for index, point in enumerate(points):
+            if pixel_check_new(point, mistake=mistake, label=f"refill_popup_{'tag_' if is_tag else ''}{index + 1}"):
                 matched += 1
         if is_debug_mode():
-            log(f"Refill popup score: {matched}/{len(REFILL_POPUP_POINTS)} (need {REFILL_POPUP_MIN_SCORE})")
-        if matched >= REFILL_POPUP_MIN_SCORE:
+            log(f"Refill popup score: {matched}/{len(points)} (need {min_score})")
+        if matched >= min_score:
             return True
 
     _rf_mistake = get_mistake(_shared, 'refill_free', 15)
@@ -389,12 +405,17 @@ class ArenaFactory(Location):
             sleep(0.5)
 
         def is_ruby_refill_visible():
-            if REFILL_RUBY_POINTS:
+            is_tag = self.name == 'Arena Tag'
+            points = REFILL_RUBY_TAG_POINTS if is_tag else REFILL_RUBY_POINTS
+            mistake = REFILL_RUBY_TAG_MISTAKE if is_tag else REFILL_RUBY_MISTAKE
+            min_score = REFILL_RUBY_TAG_MIN_SCORE if is_tag else REFILL_RUBY_MIN_SCORE
+
+            if points:
                 matched = 0
-                for index, point in enumerate(REFILL_RUBY_POINTS):
-                    if pixel_check_new(point, mistake=REFILL_RUBY_MISTAKE, label=f"refill_ruby_points_{index + 1}"):
+                for index, point in enumerate(points):
+                    if pixel_check_new(point, mistake=mistake, label=f"refill_ruby_points_{'tag_' if is_tag else ''}{index + 1}"):
                         matched += 1
-                if matched >= REFILL_RUBY_MIN_SCORE:
+                if matched >= min_score:
                     return True
             
             # Фоллбэк на старую логику, если точки не сработали
@@ -404,7 +425,7 @@ class ArenaFactory(Location):
             return find_needle_refill_ruby() is not None
 
         # ВАЖНО: не пытаться "рефиллить", если диалог докупки не открыт.
-        if not is_refill_popup_visible():
+        if not is_refill_popup_visible(self.name == 'Arena Tag'):
             return False
 
         sleep(1)
@@ -436,6 +457,33 @@ class ArenaFactory(Location):
             return self.results[len(self.results) - 1]
         else:
             return self.results
+
+    def determine_current_screen(self, is_tag, x, y):
+        _be_mistake = get_mistake(_shared, 'battle_end', 3)
+        if pixel_check_new(battle_end_coord, mistake=_be_mistake, label="det_battle"):
+            return 'ACTIVE_BATTLE'
+            
+        if is_refill_popup_visible(is_tag):
+            return 'REFILL_POPUP'
+            
+        if is_team_setup_visible():
+            return 'TEAM_SETUP'
+            
+        if pixel_check_new([x, y, ATTACK_BUTTON_RGB], label="det_list"):
+            return 'ARENA_LIST'
+            
+        if is_tag:
+            _ttc_mistake = get_mistake(_tag_data, 'tap_to_continue', 35)
+            if pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="det_ttc"):
+                return 'RESULTS_SCREEN'
+            _rta_mistake = get_mistake(_tag_data, 'return_to_arena', 30)
+            if pixel_check_new(self.return_to_arena_coord, mistake=_rta_mistake, label="det_rta"):
+                return 'RETURN_TO_ARENA'
+        else:
+            if pixel_check_new(defeat, 20, label="det_defeat"):
+                return 'RESULTS_SCREEN'
+                
+        return 'UNKNOWN'
 
     def obtain(self):
         x = self.tiers_coordinates[0]
@@ -578,7 +626,7 @@ class ArenaFactory(Location):
                     break
                     
                 # Проверка 2: Окно рефилла
-                if is_refill_popup_visible():
+                if is_refill_popup_visible(is_tag=True):
                     self.log('Refill popup detected')
                     refilled = self._refill()
                     if refilled:
@@ -611,8 +659,30 @@ class ArenaFactory(Location):
                 break
                 
             if not battle_started:
-                self.log('Battle failed to start after multiple attempts and state checks, proceeding to next')
-                continue
+                self.log('Battle failed to start after 15s wait. Performing full screen re-check...')
+                current_screen = self.determine_current_screen(is_tag=True, x=x, y=y)
+                self.log(f'Current screen detected as: {current_screen}')
+                
+                if current_screen == 'TEAM_SETUP':
+                    self.log('Fallback: Stuck on Team Setup. Pressing Escape to return to list.')
+                    pyautogui.press('escape')
+                    sleep(2)
+                    continue
+                elif current_screen == 'REFILL_POPUP':
+                    self.log('Fallback: Stuck on Refill Popup. Canceling and terminating.')
+                    pyautogui.press('escape')
+                    self.terminated = True
+                    break
+                elif current_screen == 'ARENA_LIST':
+                    self.log('Fallback: We are on Arena List. Proceeding to next opponent.')
+                    continue
+                elif current_screen in ['RESULTS_SCREEN', 'ACTIVE_BATTLE', 'RETURN_TO_ARENA']:
+                    self.log('Fallback: We actually progressed to battle/results. Continuing flow.')
+                else:
+                    self.log('Fallback: Unknown state. Attempting recovery with Escape.')
+                    pyautogui.press('escape')
+                    sleep(2)
+                    continue
 
             # TAP TO CONTINUE
             _ttc_mistake = get_mistake(_tag_data, 'tap_to_continue', 35)
@@ -779,8 +849,30 @@ class ArenaFactory(Location):
                     break
                 
                 if not battle_started:
-                    self.log('Battle failed to start after multiple attempts and state checks, proceeding to next')
-                    continue
+                    self.log('Battle failed to start after 15s wait. Performing full screen re-check...')
+                    current_screen = self.determine_current_screen(is_tag=False, x=x, y=y)
+                    self.log(f'Current screen detected as: {current_screen}')
+                    
+                    if current_screen == 'TEAM_SETUP':
+                        self.log('Fallback: Stuck on Team Setup. Pressing Escape to return to list.')
+                        pyautogui.press('escape')
+                        sleep(2)
+                        continue
+                    elif current_screen == 'REFILL_POPUP':
+                        self.log('Fallback: Stuck on Refill Popup. Canceling and terminating.')
+                        pyautogui.press('escape')
+                        self.terminated = True
+                        break
+                    elif current_screen == 'ARENA_LIST':
+                        self.log('Fallback: We are on Arena List. Proceeding to next opponent.')
+                        continue
+                    elif current_screen in ['RESULTS_SCREEN', 'ACTIVE_BATTLE']:
+                        self.log('Fallback: We actually progressed to battle/results. Continuing flow.')
+                    else:
+                        self.log('Fallback: Unknown state. Attempting recovery with Escape.')
+                        pyautogui.press('escape')
+                        sleep(2)
+                        continue
 
                 self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
                 if is_debug_mode():
