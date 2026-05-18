@@ -129,10 +129,10 @@ def _is_super_raid_enabled(x, y, rgb_enabled, rgb_disabled, mistake):
     log(f"  Disabled color: {rgb_disabled} (diff={diff_disabled}, max={max_diff_disabled}, match={matches_disabled})")
 
     if matches_enabled:
-        log(f"  Result: ENABLED")
+        log("  Result: ENABLED")
         return True
 
-    log(f"  Result: DISABLED")
+    log("  Result: DISABLED")
     return False
 
 def enable_super_raid():
@@ -176,12 +176,12 @@ def enable_super_raid():
         log(f"  vs disabled {rgb_disabled}: diff={diff_off}, match={matches_off}")
 
         if matches_on:
-            log(f"  → ENABLED")
+            log("  → ENABLED")
             return True
         if matches_off:
-            log(f"  → DISABLED")
+            log("  → DISABLED")
             return False
-        log(f"  → TRANSITIONAL (screen still loading)")
+        log("  → TRANSITIONAL (screen still loading)")
         return None
 
     # Ждём пока экран загрузится — пиксель должен стать либо enabled, либо disabled

@@ -93,7 +93,6 @@ def set_debug_mode(enabled: bool):
 
 
 def is_debug_mode():
-    global _DEBUG_MODE
     return _DEBUG_MODE
 
 

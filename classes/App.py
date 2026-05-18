@@ -4,11 +4,10 @@ import time
 import pyautogui
 from helpers.updater import is_update_available, should_check_for_updates, launch_updater
 from classes.TaskManager import TaskManager
-from classes.Storage import Storage
 from classes.Foundation import Foundation
 from helpers.logging_utils import log, log_save, set_debug_mode
-from helpers.mouse import await_click, click, click_detected_button
-from helpers.popups import close_popup, close_popup_recursive, find_popup_error_detector
+from helpers.mouse import click, click_detected_button
+from helpers.popups import close_popup, close_popup_recursive
 from helpers.vision import (
     detect_buttons,
     detect_same_variant_buttons_and_return_one,
@@ -16,7 +15,7 @@ from helpers.vision import (
     find_needle_burger,
     find_needle_close_popup,
     find_needle_popup_attention,
-    rgb_check,
+    find_popup_error_detector,
 )
 from helpers.common import (
     is_number,

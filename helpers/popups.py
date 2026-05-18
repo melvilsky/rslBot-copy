@@ -1,12 +1,9 @@
-import pyautogui
-
 from helpers.logging_utils import log, sleep
 from helpers.mouse import click
 from helpers.vision import (
     await_needle,
     find_needle_burger,
     find_needle_close_popup,
-    find_popup_error_detector,
     pixel_check_new,
 )
 

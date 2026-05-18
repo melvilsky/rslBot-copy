@@ -94,13 +94,13 @@ class IronTwins(Location):
         self.log(f"  vs disabled {rgb_disabled}: diff={diff_off}, match={matches_off}")
 
         if matches_on:
-            self.log(f"  → ENABLED")
+            self.log("  → ENABLED")
             return True
         if matches_off:
-            self.log(f"  → DISABLED")
+            self.log("  → DISABLED")
             return False
 
-        self.log(f"  → TRANSITIONAL (screen still loading)")
+        self.log("  → TRANSITIONAL (screen still loading)")
         return None
 
     def _ensure_super_raids_enabled(self):

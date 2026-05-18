@@ -8,7 +8,7 @@ from pyautogui import ImageNotFoundException as ImageNotFoundExceptionPyautogui
 from pyscreeze import ImageNotFoundException
 
 from helpers.logging_utils import is_debug_mode, log, log_save, sleep
-from helpers.screen import axis_to_region, debug_save_screenshot, screenshot_to_image
+from helpers.screen import axis_to_region, debug_save_screenshot
 
 R_DEFAULT = [0, 0, 906, 533]
 
