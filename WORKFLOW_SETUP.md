@@ -51,7 +51,7 @@ This request has been automatically failed because it uses a deprecated version 
 
 1. **Улучшен `build.py`**:
    - Добавлена проверка кода возврата PyInstaller
-   - Проверка существования `dist/main` перед копированием файлов
+   - Проверка существования `dist/RaidSL-Telegram-Bot` перед копированием файлов
    - Совместимость с Python 3.7 (убрана зависимость от `dirs_exist_ok`)
    - Обработка исключений с выводом traceback
    - Подробное логирование этапов сборки
@@ -222,7 +222,7 @@ python -c "import PyInstaller; print('PyInstaller module found')"
 
 1. **`RaidSL-Telegram-Bot` (~129 MB)**
    - ZIP архив `RaidSL-Telegram-Bot.zip`
-   - Включает exe, DLL, зависимости, images, coordinates, config.json
+   - Включает exe, DLL, зависимости, images, coordinates, config.default.json
    - Готов к скачиванию и использованию
 
 ---

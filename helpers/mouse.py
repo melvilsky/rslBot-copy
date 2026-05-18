@@ -3,7 +3,7 @@ import time
 
 import pyautogui
 
-from helpers.logging_utils import log, sleep
+from helpers.logging_utils import is_debug_mode, log, sleep
 from helpers.screen import debug_click_coordinates
 from helpers.vision import pixel_check_new, pixels_wait
 
@@ -157,4 +157,3 @@ def click_detected_button(button):
     x = button['region'][0]
     y = button['region'][1]
     click(x, y, random_click=10, smart=True)
-

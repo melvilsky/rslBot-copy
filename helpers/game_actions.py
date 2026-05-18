@@ -4,9 +4,9 @@ import os
 import pyautogui
 
 from helpers.logging_utils import log, sleep
-from helpers.mouse import await_click, click, random_easying
+from helpers.mouse import await_click, click, random_easying, tap_to_continue
 from helpers.popups import click_on_progress_info
-from helpers.vision import pixel_check_new, pixels_wait
+from helpers.vision import pixel_check_new, pixel_wait, pixels_wait
 
 def waiting_battle_end_regular(msg, timeout=5, x=20, y=46):
     return pixel_wait(msg, x, y, [255, 255, 255], timeout, mistake=10)
@@ -264,4 +264,3 @@ def is_team_provided(array):
     RGB_NO_TEAM_PROVIDED = [49, 54, 49]
     list_axis = list(map(lambda a: a + [RGB_NO_TEAM_PROVIDED], array))
     return pixels_every(list_axis, lambda p: not pixel_check_new(p))
-

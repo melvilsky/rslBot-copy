@@ -44,7 +44,8 @@ build:
     - python build.py
   artifacts:
     paths:
-      - dist/main/
+      - dist/RaidSL-Telegram-Bot/
+      - dist/RaidSL-Telegram-Bot.zip
     expire_in: 30 days
 ```
 
@@ -168,4 +169,3 @@ CMD ["python", "build.py"]
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [PyInstaller Documentation](https://pyinstaller.org/)
 - [Tesseract OCR](https://tesseract-ocr.github.io/)
-

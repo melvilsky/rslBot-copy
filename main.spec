@@ -78,5 +78,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='main',
+    name='RaidSL-Telegram-Bot',
 )

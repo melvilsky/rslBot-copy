@@ -186,9 +186,9 @@ jobs:
     
     - name: Verify build output
       run: |
-        if (Test-Path "dist\main\RaidSL-Telegram-Bot.exe") {
+        if (Test-Path "dist\RaidSL-Telegram-Bot\RaidSL-Telegram-Bot.exe") {
           Write-Host "Build successful! Executable found."
-          Get-Item "dist\main\RaidSL-Telegram-Bot.exe" | Select-Object Name, Length, LastWriteTime
+          Get-Item "dist\RaidSL-Telegram-Bot\RaidSL-Telegram-Bot.exe" | Select-Object Name, Length, LastWriteTime
         } else {
           Write-Host "ERROR: Executable not found!"
           Write-Host "Contents of dist directory:"
@@ -200,10 +200,15 @@ jobs:
       shell: powershell
       continue-on-error: false
     
-    - name: Create release archive
+    - name: Verify release archive
       run: |
-        cd dist
-        Compress-Archive -Path main\* -DestinationPath RaidSL-Telegram-Bot.zip -Force
+        if (Test-Path "dist\RaidSL-Telegram-Bot.zip") {
+          Write-Host "Release archive found."
+          Get-Item "dist\RaidSL-Telegram-Bot.zip" | Select-Object Name, Length, LastWriteTime
+        } else {
+          Write-Host "ERROR: Release archive not found!"
+          exit 1
+        }
       shell: powershell
     
     - name: Upload release archive
@@ -269,4 +274,3 @@ jobs:
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

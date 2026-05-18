@@ -1,16 +1,19 @@
 import os
+import time
 from pathlib import Path
 
 import cv2
 import np
 import pyautogui
+from PIL import Image
 from pyautogui import ImageNotFoundException as ImageNotFoundExceptionPyautogui
 from pyscreeze import ImageNotFoundException
 
 from helpers.logging_utils import is_debug_mode, log, log_save, sleep
-from helpers.screen import axis_to_region, debug_save_screenshot
+from helpers.screen import axis_to_region, debug_pixel_check_screenshot, debug_save_screenshot
 
 R_DEFAULT = [0, 0, 906, 533]
+_pixel_check_screenshot_times = {}
 
 def is_close(box1, box2, threshold=5):
     """Check if two boxes are close to each other within a certain threshold."""
@@ -182,6 +185,7 @@ def find_needle(
     if confidence is None:
         confidence = .8
     if should_move_out_cursor:
+        from helpers.mouse import move_out_cursor
         move_out_cursor()
 
     path_image = str(Path.cwd() / 'images/needles' / image_name)
@@ -476,4 +480,3 @@ def find_detected_button(button_for_click, buttons):
 
                     break
     return res
-

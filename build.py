@@ -15,6 +15,9 @@ except ImportError:
 
 root_dir = os.path.normpath(os.path.normpath(os.path.join(os.getcwd(), 'dist')))
 name = 'RaidSL-Telegram-Bot'
+app_dir_name = name
+app_dir = os.path.join(root_dir, app_dir_name)
+archive_path = os.path.join(root_dir, f'{name}.zip')
 bot_path = root_dir
 
 
@@ -56,7 +59,10 @@ def clear_dist():
 
 
 def zipper():
-    shutil.make_archive(os.path.join(bot_path, name), format='zip', root_dir=root_dir)
+    if os.path.exists(archive_path):
+        os.remove(archive_path)
+    shutil.make_archive(os.path.join(root_dir, name), format='zip', root_dir=app_dir)
+    print(f"Release archive created: {archive_path}")
 
 
 def git_commit_file(repo_path, commit_message, remote_name='origin', branch_name='master'):
@@ -78,17 +84,16 @@ def git_commit_file(repo_path, commit_message, remote_name='origin', branch_name
 
 
 def copy_images():
-    shutil.copytree('images/needles', 'dist/images/needles')
+    shutil.copytree('images/needles', os.path.join(app_dir, 'images', 'needles'))
 
 
 def copy_config():
-    shutil.copy('config.json', 'dist')
+    shutil.copy('config.json', app_dir)
 
 
 def generate_version_json():
     """Генерирует version.json для сборки"""
     version_file = 'version.json'
-    main_dir = 'dist/main'
     
     # Читаем текущую версию или используем дефолтную (utf-8-sig на случай BOM от PowerShell на Windows)
     if os.path.exists(version_file):
@@ -113,9 +118,9 @@ def generate_version_json():
         "download_url": download_url
     }
     
-    # Сохраняем в dist/main
-    os.makedirs(main_dir, exist_ok=True)
-    version_path = os.path.join(main_dir, 'version.json')
+    # Сохраняем в финальную папку приложения
+    os.makedirs(app_dir, exist_ok=True)
+    version_path = os.path.join(app_dir, 'version.json')
     with open(version_path, 'w', encoding='utf-8') as f:
         json.dump(version_data, f, indent=2, ensure_ascii=False)
     
@@ -171,9 +176,9 @@ def build_updater():
         print(f"\nERROR: PyInstaller failed for updater with exit code {result}")
         raise Exception(f"PyInstaller failed for updater with exit code {result}")
     
-    # Копируем updater.exe в dist/main
+    # Копируем updater.exe в финальную папку приложения
     updater_exe_src = os.path.join('dist', 'updater', 'updater.exe')
-    updater_exe_dst = os.path.join('dist', 'main', 'updater.exe')
+    updater_exe_dst = os.path.join(app_dir, 'updater.exe')
     
     if os.path.exists(updater_exe_src):
         if os.path.exists(updater_exe_dst):
@@ -182,18 +187,22 @@ def build_updater():
         print(f"Updater.exe copied to {updater_exe_dst}")
     else:
         raise Exception(f"Updater.exe not found at {updater_exe_src}")
-    
+
+    updater_build_dir = os.path.join(root_dir, 'updater')
+    if os.path.isdir(updater_build_dir):
+        shutil.rmtree(updater_build_dir)
+        print(f"Removed temporary updater build directory: {updater_build_dir}")
+
     print("Updater build completed successfully!")
     return result
 
 
 def copy_files():
-    main_dir = 'dist/main'
-    if not os.path.exists(main_dir):
-        raise Exception(f"Build directory '{main_dir}' does not exist. Build may have failed.")
+    if not os.path.exists(app_dir):
+        raise Exception(f"Build directory '{app_dir}' does not exist. Build may have failed.")
     
     # Создаем директорию для images если её нет
-    images_dir = os.path.join(main_dir, 'images')
+    images_dir = os.path.join(app_dir, 'images')
     os.makedirs(images_dir, exist_ok=True)
     
     # Копируем images/needles (для Python 3.7 используем проверку существования)
@@ -203,7 +212,7 @@ def copy_files():
     shutil.copytree('images/needles', needles_dest)
     
     # Копируем coordinates (координаты для различных локаций)
-    coordinates_dest = os.path.join(main_dir, 'coordinates')
+    coordinates_dest = os.path.join(app_dir, 'coordinates')
     if os.path.exists('coordinates'):
         if os.path.exists(coordinates_dest):
             shutil.rmtree(coordinates_dest)
@@ -214,10 +223,10 @@ def copy_files():
     
     # Копируем config.default.json (пользовательский config.json создается при первом запуске)
     if os.path.exists('config.default.json'):
-        shutil.copy('config.default.json', main_dir)
+        shutil.copy('config.default.json', app_dir)
     elif os.path.exists('config.json'):
         # Для обратной совместимости, если еще не переименован
-        shutil.copy('config.json', main_dir)
+        shutil.copy('config.json', app_dir)
 
 
 def create_symlink():
@@ -227,7 +236,7 @@ def create_symlink():
     
     file = f'{name}.lnk'
     original_file_path = os.path.join(root_dir, file)
-    symlink_path = os.path.join(bot_path, 'main', 'bot.exe')
+    symlink_path = os.path.join(app_dir, f'{name}.exe')
 
     # Create a shortcut object
     shell = win32com.client.Dispatch("WScript.Shell")
@@ -252,12 +261,13 @@ try:
     print(f"Python executable: {sys.executable}")
     print("=" * 60)
     
-    # Очистка dist только если папка существует
+    # Полная очистка dist, чтобы старые артефакты не смешивались с новой структурой
     if os.path.exists(root_dir):
-        print(f"Cleaning up {root_dir}...")
-        remove_files_and_folders(folder_path=root_dir, ignore=['.git', 'README.md', 'version.json'])
+        print(f"Removing previous build output: {root_dir}")
+        clear_dist()
     else:
         print(f"Directory {root_dir} does not exist, skipping cleanup")
+    os.makedirs(root_dir, exist_ok=True)
     
     # Проверка существования main.spec
     if not os.path.exists('main.spec'):
@@ -294,14 +304,20 @@ try:
     print("=" * 60)
     copy_files()
     print("Files copied successfully!")
-    
+
+    # Архивирование финальной папки приложения
+    print("\n" + "=" * 60)
+    print("CREATING RELEASE ARCHIVE")
+    print("=" * 60)
+    zipper()
+
     # create_symlink()
     
-    # Git commit только если не в CI/CD
-    if not is_ci:
+    # Git commit только если dist является отдельным git-репозиторием
+    if not is_ci and os.path.isdir(os.path.join(bot_path, '.git')):
         git_commit_file(repo_path=bot_path, commit_message="Automatic build update")
     else:
-        print("Skipping git commit in CI/CD environment")
+        print("Skipping automatic git commit for build artifacts")
     
     print("\n" + "=" * 60)
     print("BUILD PROCESS COMPLETED SUCCESSFULLY!")
