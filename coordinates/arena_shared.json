@@ -35,59 +35,58 @@
   "refill_popup": {
     "points": [
       {
-        "x": 446,
-        "y": 142,
-        "rgb": [
-          92,
-          103,
-          77
-        ],
-        "description": "Верхняя часть refill popup"
+        "x": 273,
+        "y": 188,
+        "rgb": [15, 48, 62],
+        "description": "Тёмное тело слева вверху"
       },
       {
-        "x": 294,
-        "y": 190,
-        "rgb": [
-          15,
-          48,
-          62
-        ],
-        "description": "Тёмное тело refill popup слева"
+        "x": 268,
+        "y": 391,
+        "rgb": [8, 74, 107],
+        "description": "Левая нижняя часть"
       },
       {
         "x": 625,
-        "y": 187,
-        "rgb": [
-          15,
-          48,
-          62
-        ],
-        "description": "Тёмное тело refill popup справа"
+        "y": 190,
+        "rgb": [15, 48, 62],
+        "description": "Тёмное тело справа вверху"
       },
       {
-        "x": 439,
-        "y": 243,
-        "rgb": [
-          80,
-          153,
-          55
-        ],
-        "description": "Центральная refill иконка"
-      },
-      {
-        "x": 294,
-        "y": 383,
-        "rgb": [
-          8,
-          74,
-          107
-        ],
-        "description": "Нижняя синяя часть refill popup"
+        "x": 602,
+        "y": 396,
+        "rgb": [8, 74, 107],
+        "description": "Правая нижняя часть"
       }
     ],
-    "min_score": 4,
+    "min_score": 3,
     "mistake": 20,
-    "description": "Score-проверка окна refill popup для Arena Classic/Tag"
+    "description": "Score-проверка окна refill popup (общее для free и ruby) для Arena Classic/Tag"
+  },
+  "refill_ruby_points": {
+    "points": [
+      {
+        "x": 443,
+        "y": 377,
+        "rgb": [245, 39, 48],
+        "description": "Рубин точка 1"
+      },
+      {
+        "x": 442,
+        "y": 388,
+        "rgb": [255, 251, 181],
+        "description": "Рубин точка 2"
+      },
+      {
+        "x": 433,
+        "y": 378,
+        "rgb": [243, 60, 77],
+        "description": "Рубин точка 3"
+      }
+    ],
+    "min_score": 2,
+    "mistake": 20,
+    "description": "Score-проверка рубина для определения платного рефилла"
   },
   "refill_ruby": {
     "x": 441,
@@ -136,6 +135,43 @@
     "x": 860,
     "y": 480,
     "description": "Кнопка начала боя (confirm/start)"
+  },
+  "team_setup": {
+    "points": [
+      {
+        "x": 93,
+        "y": 112,
+        "rgb": [22, 51, 90],
+        "description": "Team Setup точка 1"
+      },
+      {
+        "x": 379,
+        "y": 131,
+        "rgb": [16, 43, 66],
+        "description": "Team Setup точка 2"
+      },
+      {
+        "x": 849,
+        "y": 203,
+        "rgb": [93, 25, 27],
+        "description": "Team Setup точка 3"
+      },
+      {
+        "x": 857,
+        "y": 403,
+        "rgb": [17, 77, 108],
+        "description": "Team Setup точка 4"
+      },
+      {
+        "x": 793,
+        "y": 501,
+        "rgb": [171, 111, 0],
+        "description": "Team Setup точка 5"
+      }
+    ],
+    "min_score": 4,
+    "mistake": 20,
+    "description": "Score-проверка экрана Team Setup"
   },
   "refill_click": {
     "x": 439,

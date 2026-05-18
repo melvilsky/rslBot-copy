@@ -70,8 +70,49 @@ REFILL_POPUP_POINTS, REFILL_POPUP_MISTAKE, REFILL_POPUP_MIN_SCORE = get_score_co
     default_mistake=20,
     default_min_score=4
 )
+REFILL_RUBY_POINTS, REFILL_RUBY_MISTAKE, REFILL_RUBY_MIN_SCORE = get_score_config(
+    _shared,
+    'refill_ruby_points',
+    default_mistake=20,
+    default_min_score=2
+)
+TEAM_SETUP_POINTS, TEAM_SETUP_MISTAKE, TEAM_SETUP_MIN_SCORE = get_score_config(
+    _shared,
+    'team_setup',
+    default_mistake=20,
+    default_min_score=4
+)
 PAID_REFILL_LIMIT = 0
 OUTPUT_ITEMS_AMOUNT = 10
+
+def is_team_setup_visible():
+    if not TEAM_SETUP_POINTS:
+        return False
+    matched = 0
+    for index, point in enumerate(TEAM_SETUP_POINTS):
+        if pixel_check_new(point, mistake=TEAM_SETUP_MISTAKE, label=f"team_setup_{index + 1}"):
+            matched += 1
+    if is_debug_mode():
+        log(f"Team Setup popup score: {matched}/{len(TEAM_SETUP_POINTS)} (need {TEAM_SETUP_MIN_SCORE})")
+    return matched >= TEAM_SETUP_MIN_SCORE
+
+def is_refill_popup_visible():
+    if REFILL_POPUP_POINTS:
+        matched = 0
+        for index, point in enumerate(REFILL_POPUP_POINTS):
+            if pixel_check_new(point, mistake=REFILL_POPUP_MISTAKE, label=f"refill_popup_{index + 1}"):
+                matched += 1
+        if is_debug_mode():
+            log(f"Refill popup score: {matched}/{len(REFILL_POPUP_POINTS)} (need {REFILL_POPUP_MIN_SCORE})")
+        if matched >= REFILL_POPUP_MIN_SCORE:
+            return True
+
+    _rf_mistake = get_mistake(_shared, 'refill_free', 15)
+    _rp_mistake = get_mistake(_shared, 'refill_paid', 15)
+    return (
+        pixel_check_new(refill_free, mistake=_rf_mistake, label="refill_free_visible")
+        or pixel_check_new(refill_paid, mistake=_rp_mistake, label="refill_paid_visible")
+    )
 
 # Логика обхода списка противников (не координаты — остаётся в коде)
 CLASSIC_ITEM_LOCATIONS = [
@@ -347,47 +388,29 @@ class ArenaFactory(Location):
             click(refill_click_coord[0], refill_click_coord[1])
             sleep(0.5)
 
-        def _score_pixels(points, mistake, label):
-            matched = 0
-            for index, point in enumerate(points):
-                if pixel_check_new(point, mistake=mistake, label=f"{label}_{index + 1}"):
-                    matched += 1
-            return matched
-
-        def is_refill_popup_visible():
-            if REFILL_POPUP_POINTS:
-                matched = _score_pixels(REFILL_POPUP_POINTS, REFILL_POPUP_MISTAKE, "refill_popup")
-                if matched or is_debug_mode():
-                    self.log(
-                        f"Refill popup score: {matched}/{len(REFILL_POPUP_POINTS)} "
-                        f"(need {REFILL_POPUP_MIN_SCORE})"
-                    )
-                if matched >= REFILL_POPUP_MIN_SCORE:
-                    return True
-
-            _rf_mistake = get_mistake(_shared, 'refill_free', 15)
-            _rp_mistake = get_mistake(_shared, 'refill_paid', 15)
-            return (
-                pixel_check_new(refill_free, mistake=_rf_mistake, label="refill_free_visible")
-                or pixel_check_new(refill_paid, mistake=_rp_mistake, label="refill_paid_visible")
-            )
-
         def is_ruby_refill_visible():
+            if REFILL_RUBY_POINTS:
+                matched = 0
+                for index, point in enumerate(REFILL_RUBY_POINTS):
+                    if pixel_check_new(point, mistake=REFILL_RUBY_MISTAKE, label=f"refill_ruby_points_{index + 1}"):
+                        matched += 1
+                if matched >= REFILL_RUBY_MIN_SCORE:
+                    return True
+            
+            # Фоллбэк на старую логику, если точки не сработали
             ruby_mistake = get_mistake(_shared, 'refill_ruby', 40)
             if pixel_check_new(refill_ruby, mistake=ruby_mistake, label="refill_ruby_visible"):
                 return True
             return find_needle_refill_ruby() is not None
 
         # ВАЖНО: не пытаться "рефиллить", если диалог докупки не открыт.
-        # Иначе ложное срабатывание find_needle_refill_ruby() может привести к
-        # преждевременному `terminated=True` даже при наличии жетонов.
         if not is_refill_popup_visible():
             return False
 
         sleep(1)
 
         if is_ruby_refill_visible():
-            self.log('Free coins are NOT available')
+            self.log('Free coins are NOT available (ruby detected)')
             if self.refill > 0:
                 location_key = self.NAME.lower().replace(' ', '_')
                 profile = getattr(self.app, 'current_player_name', None)
@@ -398,8 +421,8 @@ class ArenaFactory(Location):
             else:
                 self.log('No more refill')
                 self.terminated = True
-        elif pixels_wait([refill_free], msg='Free refill sacs', mistake=10, timeout=1, wait_limit=2)[0]:
-            self.log('Free coins are available')
+        else:
+            self.log('Free coins are available (no ruby detected)')
             click_on_refill()
             refilled = True
 
@@ -518,6 +541,16 @@ class ArenaFactory(Location):
             if self.terminated:
                 break
 
+            if TEAM_SETUP_POINTS:
+                waited = 0
+                while not is_team_setup_visible() and waited < 5:
+                    sleep(0.5)
+                    waited += 0.5
+                if is_team_setup_visible():
+                    self.log('Team Setup screen detected')
+                else:
+                    self.log('Team Setup screen not detected within timeout, proceeding anyway')
+
             self.log('Function: enable_quick_battle')
             _qb_mistake = get_mistake(_tag_data, 'quick_battle', 10)
             await_click([self.quick_battle_coord], mistake=_qb_mistake, wait_limit=1)
@@ -528,30 +561,58 @@ class ArenaFactory(Location):
             click(start_battle_coord[0], start_battle_coord[1], smart=True)
             sleep(0.5)
 
-            refilled = self._refill()
-            if refilled:
-                wait_close = 5.0
-                step = 0.5
-                waited = 0
-                while waited < wait_close and pixel_check_new(refill_paid, mistake=15):
-                    sleep(step)
-                    waited += step
-                click(start_battle_coord[0], start_battle_coord[1], smart=True)
+            # Умный цикл определения текущего экрана после нажатия "Start"
+            waited_for_state = 0
+            battle_started = False
+            _ttc_mistake = get_mistake(_tag_data, 'tap_to_continue', 35)
+            
+            while waited_for_state < 15 and not self.terminated:
                 sleep(0.5)
+                waited_for_state += 0.5
+                
+                # Проверка 1: Бой начался (или сразу закончился из-за quick battle)
+                _be_mistake = get_mistake(_shared, 'battle_end', 3)
+                if pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue_active") or pixel_check_new(battle_end_coord, mistake=_be_mistake, label="battle_active_check"):
+                    self.log('Battle active or finished (tap to continue visible)')
+                    battle_started = True
+                    break
+                    
+                # Проверка 2: Окно рефилла
+                if is_refill_popup_visible():
+                    self.log('Refill popup detected')
+                    refilled = self._refill()
+                    if refilled:
+                        wait_ts = 0
+                        while not is_team_setup_visible() and wait_ts < 5:
+                            sleep(0.5)
+                            wait_ts += 0.5
+                        if is_team_setup_visible():
+                            self.log('Returned to Team Setup after refill, clicking start again')
+                        else:
+                            self.log('Team Setup not clearly visible, trying to start anyway')
+                        click(start_battle_coord[0], start_battle_coord[1], smart=True)
+                    else:
+                        self.log('Refill failed or out of tokens, terminating')
+                        self.terminated = True
+                        break
+                        
+                # Проверка 3: Всё ещё на экране Team Setup
+                elif is_team_setup_visible():
+                    if waited_for_state % 3 == 0:
+                        self.log('Still on Team Setup screen, clicking start again')
+                        click(start_battle_coord[0], start_battle_coord[1], smart=True)
+                        
+                # Проверка 4: Вернулись в список
+                elif pixel_check_new([x, y, ATTACK_BUTTON_RGB], mistake=10, label="back_to_list_check"):
+                    self.log('Back at arena list, battle did not start')
+                    break
 
             if self.terminated:
                 break
-
-            if not refilled and pixel_check_new(refill_paid, mistake=15, label="refill_dialog_check"):
-                self.log('Refill dialog still visible, battle did not start — terminating')
-                self.terminated = True
-                break
-
-            if not refilled:
-                sleep(2)
-                if pixel_check_new([x, y, ATTACK_BUTTON_RGB], mistake=10, label="back_to_list_check"):
-                    self.log('Back at list (battle did not start) — skipping wait')
-                    break
+                
+            if not battle_started:
+                self.log('Battle failed to start after multiple attempts and state checks, proceeding to next')
+                continue
 
             # TAP TO CONTINUE
             _ttc_mistake = get_mistake(_tag_data, 'tap_to_continue', 35)
@@ -651,53 +712,75 @@ class ArenaFactory(Location):
                     self.log('Terminated')
                     break
 
+                if TEAM_SETUP_POINTS:
+                    waited = 0
+                    while not is_team_setup_visible() and waited < 5:
+                        sleep(0.5)
+                        waited += 0.5
+                    if is_team_setup_visible():
+                        self.log('Team Setup screen detected')
+                    else:
+                        self.log('Team Setup screen not detected within timeout, proceeding anyway')
+
                 enable_start_on_auto()
 
                 if is_debug_mode():
                     debug_save_screenshot(suffix_name=f"classic-before-start-i{i}")
                 click_on_start()
 
-                refilled = self._refill()
-                if refilled:
-                    wait_close = 5.0
-                    step = 0.5
-                    waited = 0
-                    while waited < wait_close and pixel_check_new(refill_paid, mistake=15):
-                        sleep(step)
-                        waited += step
-                    if waited >= wait_close:
-                        self.log('Refill dialog still visible after wait, clicking Start anyway')
-                    click_on_start()
+                # Умный цикл определения текущего экрана после нажатия "Start"
+                waited_for_state = 0
+                battle_started = False
+                while waited_for_state < 15 and not self.terminated:
+                    sleep(0.5)
+                    waited_for_state += 0.5
+
+                    # Проверка 1: Битва началась
+                    _be_mistake = get_mistake(_shared, 'battle_end', 3)
+                    if pixel_check_new(battle_end_coord, mistake=_be_mistake, label="battle_active_check"):
+                        self.log('Battle active (clock icon found)')
+                        battle_started = True
+                        break
+
+                    # Проверка 2: Окно рефилла
+                    if is_refill_popup_visible():
+                        self.log('Refill popup detected')
+                        refilled = self._refill()
+                        if refilled:
+                            # Ожидаем возврата к экрану выбора команды
+                            wait_ts = 0
+                            while not is_team_setup_visible() and wait_ts < 5:
+                                sleep(0.5)
+                                wait_ts += 0.5
+                            if is_team_setup_visible():
+                                self.log('Returned to Team Setup after refill, clicking start again')
+                            else:
+                                self.log('Team Setup not clearly visible, trying to start anyway')
+                            click_on_start()
+                            # Продолжаем цикл ожидания состояния
+                        else:
+                            self.log('Refill failed or out of tokens, terminating')
+                            self.terminated = True
+                            break
+
+                    # Проверка 3: Всё ещё на экране Team Setup (может быть клик не сработал)
+                    elif is_team_setup_visible():
+                        if waited_for_state % 3 == 0:  # Периодически повторяем клик
+                            self.log('Still on Team Setup screen, clicking start again')
+                            click_on_start()
+
+                    # Проверка 4: Вернулись в список противников (возможно из-за отмены рефилла)
+                    elif pixel_check_new([x, y, ATTACK_BUTTON_RGB], mistake=10, label="back_to_list_check"):
+                        self.log('Back at arena list, battle did not start')
+                        break
 
                 if self.terminated:
                     self.log('Terminated')
                     break
-
-                if not refilled and pixel_check_new(refill_paid, mistake=15, label="refill_dialog_check"):
-                    self.log('Refill dialog still visible, battle did not start — terminating')
-                    self.terminated = True
-                    break
-
-                if not refilled:
-                    sleep(2)
-                    if pixel_check_new([x, y, ATTACK_BUTTON_RGB], mistake=10, label="back_to_list_check"):
-                        self.log('Back at list (battle did not start) — breaking to trigger refresh')
-                        break
-
-                # User requested check: verify if the Start Battle button is still present
-                start_battle_check_coord = [792, 508]
-                start_battle_check_color = [175, 114, 0]
                 
-                if pixel_check_new([start_battle_check_coord[0], start_battle_check_coord[1], start_battle_check_color], mistake=15, label="start_battle_still_present"):
-                    self.log('Start battle button is still present, clicking it again')
-                    click_on_start()
-                    sleep(2)
-                    
-                    if pixel_check_new([start_battle_check_coord[0], start_battle_check_coord[1], start_battle_check_color], mistake=15, label="start_battle_still_present_after_retry"):
-                        self.log('Start battle button is STILL present after retry, battle did not start — skipping wait')
-                        continue
-                else:
-                    self.log('Start battle button is no longer present, proceeding')
+                if not battle_started:
+                    self.log('Battle failed to start after multiple attempts and state checks, proceeding to next')
+                    continue
 
                 self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
                 if is_debug_mode():
