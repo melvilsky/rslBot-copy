@@ -53,6 +53,7 @@ refill_free = get_coordinate(_shared, 'refill_free', source='coordinates/arena_s
 refill_paid = get_coordinate(_shared, 'refill_paid', source='coordinates/arena_shared.json')
 refill_ruby = get_coordinate(_shared, 'refill_ruby', source='coordinates/arena_shared.json')
 defeat = get_coordinate(_shared, 'defeat', source='coordinates/arena_shared.json')
+defeat_mistake = get_mistake(_shared, 'defeat', 35)
 tab_battle = get_coordinate(_shared, 'tab_battle', source='coordinates/arena_shared.json')
 battle_end_coord = get_coordinate(_shared, 'battle_end', source='coordinates/arena_shared.json')
 start_battle_coord = get_coordinate(_shared, 'start_battle', source='coordinates/arena_shared.json')
@@ -94,6 +95,18 @@ TEAM_SETUP_POINTS, TEAM_SETUP_MISTAKE, TEAM_SETUP_MIN_SCORE = get_score_config(
     default_mistake=20,
     default_min_score=4
 )
+DEFEAT_POINTS, DEFEAT_MISTAKE, DEFEAT_MIN_SCORE = get_score_config(
+    _shared,
+    'defeat_points',
+    default_mistake=35,
+    default_min_score=3
+)
+VICTORY_POINTS, VICTORY_MISTAKE, VICTORY_MIN_SCORE = get_score_config(
+    _shared,
+    'victory_points',
+    default_mistake=35,
+    default_min_score=2
+)
 PAID_REFILL_LIMIT = 0
 OUTPUT_ITEMS_AMOUNT = 10
 
@@ -107,6 +120,28 @@ def is_team_setup_visible():
     if is_debug_mode():
         log(f"Team Setup popup score: {matched}/{len(TEAM_SETUP_POINTS)} (need {TEAM_SETUP_MIN_SCORE})")
     return matched >= TEAM_SETUP_MIN_SCORE
+
+def is_defeat_screen_visible():
+    if DEFEAT_POINTS:
+        matched = 0
+        for index, point in enumerate(DEFEAT_POINTS):
+            if pixel_check_new(point, mistake=DEFEAT_MISTAKE, label=f"defeat_{index + 1}"):
+                matched += 1
+        if is_debug_mode():
+            log(f"Defeat screen score: {matched}/{len(DEFEAT_POINTS)} (need {DEFEAT_MIN_SCORE})")
+        return matched >= DEFEAT_MIN_SCORE
+    return pixel_check_new(defeat, defeat_mistake, label="det_defeat")
+
+def is_victory_screen_visible():
+    if VICTORY_POINTS:
+        matched = 0
+        for index, point in enumerate(VICTORY_POINTS):
+            if pixel_check_new(point, mistake=VICTORY_MISTAKE, label=f"victory_{index + 1}"):
+                matched += 1
+        if is_debug_mode():
+            log(f"Victory screen score: {matched}/{len(VICTORY_POINTS)} (need {VICTORY_MIN_SCORE})")
+        return matched >= VICTORY_MIN_SCORE
+    return False
 
 def is_refill_popup_visible(is_tag=False):
     points = REFILL_POPUP_TAG_POINTS if is_tag else REFILL_POPUP_POINTS
@@ -424,7 +459,12 @@ class ArenaFactory(Location):
                 return True
             return find_needle_refill_ruby() is not None
 
-        # ВАЖНО: не пытаться "рефиллить", если диалог докупки не открыт.
+        # ВАЖНО: Ждем анимацию появления попапа до 3 секунд
+        waited_popup = 0
+        while not is_refill_popup_visible(self.name == 'Arena Tag') and waited_popup < 3:
+            sleep(0.5)
+            waited_popup += 0.5
+
         if not is_refill_popup_visible(self.name == 'Arena Tag'):
             return False
 
@@ -480,7 +520,7 @@ class ArenaFactory(Location):
             if pixel_check_new(self.return_to_arena_coord, mistake=_rta_mistake, label="det_rta"):
                 return 'RETURN_TO_ARENA'
         else:
-            if pixel_check_new(defeat, 20, label="det_defeat"):
+            if is_defeat_screen_visible() or is_victory_screen_visible():
                 return 'RESULTS_SCREEN'
                 
         return 'UNKNOWN'
@@ -701,7 +741,7 @@ class ArenaFactory(Location):
                     self.terminated = True
                 break
 
-            res = not pixel_check_new(defeat, 20, label="defeat_check")
+            res = not is_defeat_screen_visible()
             results_local.append(res)
             self.log('VICTORY' if res else 'DEFEAT')
 
@@ -877,7 +917,7 @@ class ArenaFactory(Location):
                 self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
                 if is_debug_mode():
                     debug_save_screenshot(suffix_name=f"classic-battle-result-i{i}")
-                res = not pixel_check_new(defeat, 20, label="defeat_check")
+                res = not is_defeat_screen_visible()
                 results_local.append(res)
                 result_name = 'VICTORY' if res else 'DEFEAT'
                 self.log(result_name)
@@ -892,21 +932,21 @@ class ArenaFactory(Location):
                 max_wait_time = 7
                 check_interval = 0.5
                 waited = 0
-                while pixel_check_new(defeat, 20) and waited < max_wait_time:
+                while (is_defeat_screen_visible() or is_victory_screen_visible()) and waited < max_wait_time:
                     sleep(check_interval)
                     waited += check_interval
 
-                if pixel_check_new(defeat, 20):
+                if is_defeat_screen_visible() or is_victory_screen_visible():
                     self.log('Victory/defeat screen still visible, retrying tap_to_continue')
                     tap_to_continue(times=2, wait_after=3)
                     sleep(2)
 
                     waited = 0
-                    while pixel_check_new(defeat, 20) and waited < max_wait_time:
+                    while (is_defeat_screen_visible() or is_victory_screen_visible()) and waited < max_wait_time:
                         sleep(check_interval)
                         waited += check_interval
 
-                if not pixel_check_new(defeat, 20):
+                if not (is_defeat_screen_visible() or is_victory_screen_visible()):
                     self.log('Victory/defeat screen closed successfully')
                 else:
                     self.log('Warning: Victory/defeat screen may still be visible')

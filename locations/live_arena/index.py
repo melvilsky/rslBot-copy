@@ -47,7 +47,6 @@ _coordinates_data = load_coordinates('live_arena.json', required=True)
 
 def get_live_arena_coordinate(key):
     result = get_coordinate(_coordinates_data, key, source='coordinates/live_arena.json', require_rgb=True)
-    log_save(f"Loaded coordinate '{key}' from JSON: {result}")
     return result
 
 

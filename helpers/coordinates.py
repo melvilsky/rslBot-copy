@@ -1,5 +1,6 @@
 import json
 import os
+from helpers.logging_utils import log_save
 
 
 def load_coordinates(filename, required=False):
@@ -8,7 +9,9 @@ def load_coordinates(filename, required=False):
     try:
         if os.path.exists(path):
             with open(path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                log_save(f"Loaded coordinates file: {path}")
+                return data
         if required:
             raise RuntimeError(
                 f'Не найден файл coordinates/{filename}. '

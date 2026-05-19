@@ -35,9 +35,7 @@ def debug_save_screenshot(
         region[0] = int(R_WINDOW_DEFAULT[2] / 2 - region[2] / 2)
         region[1] = y
 
-    output_debug = Path('debug')
-    if output is not None:
-        output_debug = output_debug / output
+    output_debug = Path('debug/screenshots')
 
     time = get_time_for_log(s='-')
     folder_ensure(output_debug)
@@ -125,10 +123,10 @@ def debug_click_coordinates(x, y, label="click", region=None, grid=False):
                    (rel_x - text_width // 2, rel_y - text_height - 10),
                    font, font_scale, text_color, thickness, cv2.LINE_AA)
         
-        output_debug = Path('debug/clicks')
+        output_debug = Path('debug/screenshots')
         folder_ensure(output_debug)
         time_str = get_time_for_log(s='-')
-        file_name = f"{time_str}-{label}-[{x}-{y}].jpg"
+        file_name = f"{time_str}-click-{label}-[{x}-{y}].jpg"
         file_path = output_debug / file_name
         
         img_rgb = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
@@ -204,11 +202,11 @@ def debug_pixel_check_screenshot(x, y, expected_rgb, actual_rgb, match, label=No
         cv2.putText(img_np, line1, (4, h - th2 - 10), font, fs, (0, 255, 255), 1, cv2.LINE_AA)
         cv2.putText(img_np, line2, (4, h - 4), font, fs, (0, 255, 255), 1, cv2.LINE_AA)
 
-        output_debug = Path('debug/pixel_checks')
+        output_debug = Path('debug/screenshots')
         folder_ensure(output_debug)
         time_str = get_time_for_log(s='-')
         tag = label or "check"
-        file_name = f"{time_str}-{tag}-[{x}-{y}]-{match_str}.jpg"
+        file_name = f"{time_str}-pixel-{tag}-[{x}-{y}]-{match_str}.jpg"
         file_path = output_debug / file_name
 
         img_rgb = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
@@ -229,7 +227,7 @@ def show_pyautogui_image(pyautogui_screenshot, title='match'):
     if not is_debug_mode():
         return
 
-    output_debug = Path('debug/images')
+    output_debug = Path('debug/screenshots')
     folder_ensure(output_debug)
     time_str = get_time_for_log(s='-')
     
@@ -244,10 +242,10 @@ def show_image(path=None, image=None, title='Image'):
     if not is_debug_mode():
         return
 
-    output_debug = Path('debug/images')
+    output_debug = Path('debug/screenshots')
     folder_ensure(output_debug)
     time_str = get_time_for_log(s='-')
-    file_name = f"{time_str}-{title}.jpg"
+    file_name = f"{time_str}-image-{title}.jpg"
 
     if path:
         image = cv2.imread(path)
