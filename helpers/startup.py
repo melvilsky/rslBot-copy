@@ -299,7 +299,9 @@ class StartupServices:
         try:
             pid = self.app._collect_player_id_from_game()
             if not pid:
-                log('[startup] Auto-load failed: could not detect player ID from game.')
+                msg = 'Не удалось автоматически определить Player ID из игры.'
+                log(f'[startup] Auto-load failed: {msg}')
+                self.ask_startup_profile_selection(error_msg=msg)
                 return
                 
             profiles = self.app._get_profiles_with_player_id()
@@ -329,14 +331,45 @@ class StartupServices:
             else:
                 msg = f"Профиль для player_id '{pid}' не найден в папке profiles."
                 log(f'[startup] {msg}')
-                if self.telegram_bot:
-                    chat_id = get_last_chat_id()
-                    if chat_id:
-                        try:
-                            self.telegram_bot.updater.bot.send_message(chat_id=chat_id, text=msg)
-                        except Exception:
-                            pass
+                self.ask_startup_profile_selection(error_msg=msg)
 
         except Exception as e:
             import traceback
             log(f'[startup] Error during auto-load: {e}\n{traceback.format_exc()}')
+            self.ask_startup_profile_selection()
+
+    def ask_startup_profile_selection(self, error_msg=None):
+        if not has_profile_mode():
+            return
+        names = list_profile_filenames()
+        if not names:
+            return
+            
+        text = 'Обнаружена папка profiles. Выберите конфиг для загрузки:'
+        if error_msg:
+            text = f"{error_msg}\n\n{text}"
+            
+        buttons = [[{'text': n, 'callback_data': f'loadconfig:{i}'}] for i, n in enumerate(names)]
+
+        if self.telegram_bot:
+            from helpers.common import get_last_chat_id
+            chat_id = get_last_chat_id()
+            if chat_id:
+                keyboard = [[InlineKeyboardButton(n, callback_data=f'loadconfig:{i}')] for i, n in enumerate(names)]
+                try:
+                    self.telegram_bot.updater.bot.send_message(
+                        chat_id=chat_id,
+                        text=text,
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+                except Exception:
+                    pass
+
+        try:
+            from web.server import broadcast_command_result
+            broadcast_command_result('startup', {
+                'text': text,
+                'buttons': buttons,
+            })
+        except Exception:
+            pass

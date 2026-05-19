@@ -24,6 +24,14 @@ class TelegramMessageContext(MessageContext):
         self.context = context
 
     def reply_text(self, text, **kwargs):
+        if 'buttons' in kwargs:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            buttons = kwargs.pop('buttons')
+            keyboard = []
+            for row in buttons:
+                kb_row = [InlineKeyboardButton(btn['text'], callback_data=btn['callback_data']) for btn in row]
+                keyboard.append(kb_row)
+            kwargs['reply_markup'] = InlineKeyboardMarkup(keyboard)
         return self.update.message.reply_text(text, **kwargs)
 
     def reply_photo(self, photo_bytes, caption=None):
