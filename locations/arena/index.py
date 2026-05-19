@@ -143,6 +143,12 @@ def is_victory_screen_visible():
         return matched >= VICTORY_MIN_SCORE
     return False
 
+def is_results_screen_visible():
+    _be_mistake = get_mistake(_shared, 'battle_end', 3)
+    if pixel_check_new(battle_end_coord, mistake=_be_mistake, label="results_screen_clock"):
+        return True
+    return is_defeat_screen_visible() or is_victory_screen_visible()
+
 def is_refill_popup_visible(is_tag=False):
     points = REFILL_POPUP_TAG_POINTS if is_tag else REFILL_POPUP_POINTS
     mistake = REFILL_POPUP_TAG_MISTAKE if is_tag else REFILL_POPUP_MISTAKE
@@ -501,7 +507,7 @@ class ArenaFactory(Location):
     def determine_current_screen(self, is_tag, x, y):
         _be_mistake = get_mistake(_shared, 'battle_end', 3)
         if pixel_check_new(battle_end_coord, mistake=_be_mistake, label="det_battle"):
-            return 'ACTIVE_BATTLE'
+            return 'RESULTS_SCREEN'
             
         if is_refill_popup_visible(is_tag):
             return 'REFILL_POPUP'
@@ -520,7 +526,7 @@ class ArenaFactory(Location):
             if pixel_check_new(self.return_to_arena_coord, mistake=_rta_mistake, label="det_rta"):
                 return 'RETURN_TO_ARENA'
         else:
-            if is_defeat_screen_visible() or is_victory_screen_visible():
+            if is_results_screen_visible():
                 return 'RESULTS_SCREEN'
                 
         return 'UNKNOWN'
@@ -932,21 +938,21 @@ class ArenaFactory(Location):
                 max_wait_time = 7
                 check_interval = 0.5
                 waited = 0
-                while (is_defeat_screen_visible() or is_victory_screen_visible()) and waited < max_wait_time:
+                while is_results_screen_visible() and waited < max_wait_time:
                     sleep(check_interval)
                     waited += check_interval
 
-                if is_defeat_screen_visible() or is_victory_screen_visible():
+                if is_results_screen_visible():
                     self.log('Victory/defeat screen still visible, retrying tap_to_continue')
                     tap_to_continue(times=2, wait_after=3)
                     sleep(2)
 
                     waited = 0
-                    while (is_defeat_screen_visible() or is_victory_screen_visible()) and waited < max_wait_time:
+                    while is_results_screen_visible() and waited < max_wait_time:
                         sleep(check_interval)
                         waited += check_interval
 
-                if not (is_defeat_screen_visible() or is_victory_screen_visible()):
+                if not is_results_screen_visible():
                     self.log('Victory/defeat screen closed successfully')
                 else:
                     self.log('Warning: Victory/defeat screen may still be visible')
