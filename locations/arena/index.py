@@ -55,7 +55,6 @@ refill_ruby = get_coordinate(_shared, 'refill_ruby', source='coordinates/arena_s
 defeat = get_coordinate(_shared, 'defeat', source='coordinates/arena_shared.json')
 defeat_mistake = get_mistake(_shared, 'defeat', 35)
 tab_battle = get_coordinate(_shared, 'tab_battle', source='coordinates/arena_shared.json')
-battle_end_coord = get_coordinate(_shared, 'battle_end', source='coordinates/arena_shared.json')
 battle_active_coord = get_coordinate(_shared, 'battle_active', source='coordinates/arena_shared.json') if 'battle_active' in _shared else None
 start_battle_coord = get_coordinate(_shared, 'start_battle', source='coordinates/arena_shared.json')
 refill_click_coord = get_coordinate(_shared, 'refill_click', source='coordinates/arena_shared.json')
@@ -145,9 +144,6 @@ def is_victory_screen_visible():
     return False
 
 def is_results_screen_visible():
-    _be_mistake = get_mistake(_shared, 'battle_end', 3)
-    if pixel_check_new(battle_end_coord, mistake=_be_mistake, label="results_screen_clock"):
-        return True
     return is_defeat_screen_visible() or is_victory_screen_visible()
 
 def is_refill_popup_visible(is_tag=False):
@@ -283,9 +279,8 @@ class ArenaFactory(Location):
 
         self._apply_props(props=props)
 
-        _be_mistake = get_mistake(_shared, 'battle_end', 3)
         self.E_BATTLE_END = prepare_event(self.E_BATTLE_END, {
-            "expect": lambda: pixel_check_new(battle_end_coord, mistake=_be_mistake)
+            "expect": lambda: is_defeat_screen_visible() or is_victory_screen_visible()
         })
 
         for i in range(len(self.item_locations)):
@@ -506,10 +501,9 @@ class ArenaFactory(Location):
             return self.results
 
     def determine_current_screen(self, is_tag, x, y):
-        _be_mistake = get_mistake(_shared, 'battle_end', 3)
-        if pixel_check_new(battle_end_coord, mistake=_be_mistake, label="det_battle"):
+        if is_results_screen_visible():
             return 'RESULTS_SCREEN'
-            
+
         if is_refill_popup_visible(is_tag):
             return 'REFILL_POPUP'
             
@@ -526,10 +520,7 @@ class ArenaFactory(Location):
             _rta_mistake = get_mistake(_tag_data, 'return_to_arena', 30)
             if pixel_check_new(self.return_to_arena_coord, mistake=_rta_mistake, label="det_rta"):
                 return 'RETURN_TO_ARENA'
-        else:
-            if is_results_screen_visible():
-                return 'RESULTS_SCREEN'
-                
+
         return 'UNKNOWN'
 
     def obtain(self):
@@ -665,11 +656,10 @@ class ArenaFactory(Location):
                 sleep(0.5)
                 waited_for_state += 0.5
                 
-                # Проверка 1: Бой начался (белые часы) или уже закончился (серые часы на результатах)
-                _be_mistake = get_mistake(_shared, 'battle_end', 3)
+                # Проверка 1: Бой начался (белые часы) или уже закончился (defeat/victory)
                 _ba_mistake = get_mistake(_shared, 'battle_active', 30)
                 battle_in_progress = battle_active_coord and pixel_check_new(battle_active_coord, mistake=_ba_mistake, label="battle_active_check")
-                results_visible = pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue_active") or pixel_check_new(battle_end_coord, mistake=_be_mistake, label="battle_active_check")
+                results_visible = pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue_active") or is_results_screen_visible()
                 if battle_in_progress or results_visible:
                     self.log('Battle active or finished (tap to continue visible)')
                     battle_started = True
@@ -855,11 +845,10 @@ class ArenaFactory(Location):
                     sleep(0.5)
                     waited_for_state += 0.5
 
-                    # Проверка 1: Битва началась (белые часы во время боя) или уже закончилась (серые часы на результатах)
-                    _be_mistake = get_mistake(_shared, 'battle_end', 3)
+                    # Проверка 1: Битва началась (белые часы во время боя) или уже закончилась (defeat/victory)
                     _ba_mistake = get_mistake(_shared, 'battle_active', 30)
                     battle_in_progress = battle_active_coord and pixel_check_new(battle_active_coord, mistake=_ba_mistake, label="battle_active_check")
-                    results_visible = pixel_check_new(battle_end_coord, mistake=_be_mistake, label="results_check")
+                    results_visible = is_results_screen_visible()
                     if battle_in_progress or results_visible:
                         self.log('Battle active or already finished')
                         battle_started = True
