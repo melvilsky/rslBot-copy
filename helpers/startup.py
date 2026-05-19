@@ -289,34 +289,54 @@ class StartupServices:
             'handler': loadconfig_cmd,
         })
         self.telegram_bot.dp.add_handler(CallbackQueryHandler(loadconfig_callback, run_async=True))
-        self.send_startup_profile_selection()
+        self.auto_load_profile_on_startup()
 
-    def send_startup_profile_selection(self):
+    def auto_load_profile_on_startup(self):
+        log('[startup] Attempting to auto-load profile...')
         if not has_profile_mode():
             return
-        names = list_profile_filenames()
-        if not names:
-            return
-        buttons = [[{'text': n, 'callback_data': f'loadconfig:{i}'}] for i, n in enumerate(names)]
-
-        if self.telegram_bot:
-            chat_id = get_last_chat_id()
-            if chat_id:
-                keyboard = [[InlineKeyboardButton(n, callback_data=f'loadconfig:{i}')] for i, n in enumerate(names)]
-                try:
-                    self.telegram_bot.updater.bot.send_message(
-                        chat_id=chat_id,
-                        text='Обнаружена папка profiles. Выберите конфиг для загрузки:',
-                        reply_markup=InlineKeyboardMarkup(keyboard)
-                    )
-                except Exception:
-                    pass
-
+            
         try:
-            from web.server import broadcast_command_result
-            broadcast_command_result('startup', {
-                'text': 'Обнаружена папка profiles. Выберите конфиг для загрузки:',
-                'buttons': buttons,
-            })
-        except Exception:
-            pass
+            pid = self.app._collect_player_id_from_game()
+            if not pid:
+                log('[startup] Auto-load failed: could not detect player ID from game.')
+                return
+                
+            profiles = self.app._get_profiles_with_player_id()
+            match_name = next((name for name, p_id in profiles if p_id == pid), None)
+            
+            if match_name:
+                log(f'[startup] Auto-detected profile: {match_name} (ID: {pid})')
+                names = list_profile_filenames()
+                if match_name in names:
+                    idx = names.index(match_name)
+                    def log_reply(text):
+                        log(f"[startup] {text}")
+                        if self.telegram_bot:
+                            chat_id = get_last_chat_id()
+                            if chat_id:
+                                try:
+                                    self.telegram_bot.updater.bot.send_message(chat_id=chat_id, text=text)
+                                except Exception:
+                                    pass
+                        try:
+                            from web.server import broadcast_command_result
+                            broadcast_command_result('startup', {'text': text})
+                        except Exception:
+                            pass
+
+                    self.process_loadconfig(idx, log_reply)
+            else:
+                msg = f"Профиль для player_id '{pid}' не найден в папке profiles."
+                log(f'[startup] {msg}')
+                if self.telegram_bot:
+                    chat_id = get_last_chat_id()
+                    if chat_id:
+                        try:
+                            self.telegram_bot.updater.bot.send_message(chat_id=chat_id, text=msg)
+                        except Exception:
+                            pass
+
+        except Exception as e:
+            import traceback
+            log(f'[startup] Error during auto-load: {e}\n{traceback.format_exc()}')

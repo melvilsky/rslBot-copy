@@ -59,7 +59,7 @@ def main():
             services.start_telegram()
         else:
             log('[startup] No Telegram token. Web and CLI are running. Press Ctrl+C to exit.')
-            services.send_startup_profile_selection()
+            services.auto_load_profile_on_startup()
             threading.Event().wait()
 
     except KeyboardInterrupt:

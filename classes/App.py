@@ -16,6 +16,7 @@ from helpers.vision import (
     find_needle_close_popup,
     find_needle_popup_attention,
     find_popup_error_detector,
+    pixels_wait,
 )
 from helpers.common import (
     is_number,
@@ -786,8 +787,8 @@ class App(Foundation):
 
     def _collect_player_id_from_game(self):
         """
-        Выполняет 3 клика в игре и ESC, проверяет закрытие окна, возвращает нормализованный id из буфера.
-        Возвращает None при ошибке или если окно не закрылось.
+        Выполняет клики для автоматического определения id игрока и возвращает его.
+        Убеждается, что мы находимся на главном экране до и после процесса.
         """
         try:
             import pyperclip
@@ -797,34 +798,79 @@ class App(Foundation):
         if self.get_window_region() is None:
             self.log('Window not available for player id collection')
             return None
-        # Экранные координаты: контент окна = window.left + BORDER_WIDTH, window.top + BORDER_TOP
+            
         base_x = self.window.left + BORDER_WIDTH
         base_y = self.window.top + WINDOW_TOP_BAR_HEIGHT + BORDER_WIDTH
-        sleep(PLAYER_ID_DELAY_BEFORE_FIRST)
-        for coord, (dx, dy) in enumerate([
-            PLAYER_ID_CLICK_1,
-            PLAYER_ID_CLICK_2,
-            PLAYER_ID_CLICK_3,
-        ], 1):
-            x, y = base_x + dx, base_y + dy
-            click(x, y)
-            if coord == 1:
-                delay = PLAYER_ID_DELAY_AFTER_FIRST
-            elif coord < 3:
-                delay = PLAYER_ID_DELAY_BETWEEN_CLICKS
-            else:
-                delay = PLAYER_ID_DELAY_AFTER_COPY
-            sleep(delay)
-        pyautogui.press('escape')
-        sleep(0.3)
-        if not self._verify_player_id_window_closed():
-            self.log('Player id window did not close after ESC')
+        
+        def _ensure_main_screen():
+            for _ in range(15):
+                if find_needle_burger() is not None and not self._has_popup_open():
+                    return True
+                pyautogui.press('escape')
+                sleep(1)
+                close_popup_recursive(timeout=1, delay=0.5)
+            return False
+
+        # 0. Ensure we are on the main screen first
+        if not _ensure_main_screen():
+            self.log("Failed to reach main screen before collecting ID")
             return None
+        
+        # 1. Click main screen (42, 79)
+        click(base_x + 42, base_y + 79)
+        self.log('Clicked main screen avatar (42, 79)')
+        
+        # 2. Wait for settings screen
+        settings_pixels = [
+            [base_x + 47, base_y + 196, [231, 206, 88]],
+            [base_x + 138, base_y + 270, [8, 70, 100]],
+            [base_x + 48, base_y + 348, [231, 206, 88]],
+        ]
+        
+        # Wait up to 10 seconds for the settings screen
+        settings_wait = pixels_wait(settings_pixels, msg="Wait settings screen", mistake=15, wait_limit=10, timeout=1)
+        if settings_wait.count(True) != len(settings_pixels):
+            self.log("Settings screen not detected")
+            _ensure_main_screen()
+            return None
+            
+        # Click info tab (last landmark)
+        click(base_x + 48, base_y + 348)
+        self.log('Clicked Info tab (48, 348)')
+        
+        # 3. Wait for info screen
+        info_pixels = [
+            [base_x + 236, base_y + 130, [18, 64, 88]],
+            [base_x + 405, base_y + 492, [22, 89, 118]],
+            [base_x + 594, base_y + 148, [26, 88, 114]],
+            [base_x + 773, base_y + 138, [179, 125, 5]],
+            [base_x + 772, base_y + 164, [171, 111, 0]],
+        ]
+        
+        info_wait = pixels_wait(info_pixels, msg="Wait info screen", mistake=15, wait_limit=10, timeout=1)
+        if info_wait.count(True) != len(info_pixels):
+            self.log("Info screen not detected")
+            _ensure_main_screen()
+            return None
+            
+        # 4. Click copy ID
+        click(base_x + 773, base_y + 138)
+        sleep(0.5)
+        click(base_x + 772, base_y + 164)
+        sleep(1)
+        self.log('Clicked Copy ID button')
+        
         raw = pyperclip.paste().strip()
         # Нормализация: привести пробелы вокруг | к одному виду
         if '|' in raw:
             parts = [p.strip() for p in raw.split('|', 1)]
             raw = ' | '.join(parts) if len(parts) == 2 else raw
+
+        # 5. Return to main screen
+        if not _ensure_main_screen():
+            self.log('Failed to return to main screen after collecting ID')
+            return None
+            
         return raw if raw else None
 
     def _get_profiles_with_player_id(self):
