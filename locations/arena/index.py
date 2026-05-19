@@ -939,28 +939,29 @@ class ArenaFactory(Location):
                     self.classic_defeat_offset = i + 1
                     self.log(f'Defeat at position {i}, next pass will start from offset {self.classic_defeat_offset}')
 
-                # Кликаем tap_to_continue и ждём пока экран результата закроется
-                # Дополнительно проверяем каждые 0.5с появление battle_active (белые часы боя)
-                # Если screen не закрылся — кликаем ещё раз
-                _max_close_wait = 10
+                # Кликаем tap_to_continue 2 раза и ждём возврата на страницу выбора соперника
+                tap_to_continue(times=2, wait_after=2)
+
+                # Проверяем что вернулись на страницу списка соперников (кнопка атаки видна)
+                _max_close_wait = 8
                 _close_interval = 0.5
                 _close_waited = 0
-                _ba_mistake = get_mistake(_shared, 'battle_active', 10)
-
-                tap_to_continue(times=3, wait_after=1)
+                _back_on_list = False
+                pos = self.button_locations[1]
 
                 while _close_waited < _max_close_wait:
                     sleep(_close_interval)
                     _close_waited += _close_interval
-                    # Если белые часы (активный бой) пропали — значит мы уже на другом экране
-                    if battle_active_coord and not pixel_check_new(battle_active_coord, mistake=_ba_mistake, label="wait_results_close"):
-                        self.log('Results screen closed (battle clock gone)')
+                    if pixel_check_new([pos[0], pos[1], ATTACK_BUTTON_RGB], mistake=10, label="back_on_list"):
+                        self.log('Back on arena list')
+                        _back_on_list = True
                         break
-                else:
-                    self.log('Warning: results screen may still be visible, tapping again')
-                    tap_to_continue(times=3, wait_after=2)
 
-                sleep(2)
+                if not _back_on_list:
+                    self.log('Still not on arena list, tapping again')
+                    tap_to_continue(times=2, wait_after=2)
+
+                sleep(1)
 
         if len(results_local):
             self.results.append(results_local)
