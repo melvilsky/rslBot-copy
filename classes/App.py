@@ -822,38 +822,15 @@ class App(Foundation):
         click(42, 79)
         self.log('Clicked main screen avatar (42, 79)')
         
-        # 2. Wait for settings screen
-        settings_pixels = [
-            [47, 196, [231, 206, 88]],
-            [138, 270, [8, 70, 100]],
-            [48, 348, [231, 206, 88]],
-        ]
-        
-        # Wait up to 10 seconds for the settings screen
-        settings_wait = pixels_wait(settings_pixels, msg="Wait settings screen", mistake=20, wait_limit=10, timeout=1)
-        if settings_wait.count(True) != len(settings_pixels):
-            self.log("Settings screen not detected")
-            _ensure_main_screen()
-            return None
+        # Wait for settings screen to open
+        sleep(2)
             
-        # Click info tab (last landmark)
+        # Click info tab
         click(48, 348)
         self.log('Clicked Info tab (48, 348)')
         
-        # 3. Wait for info screen
-        info_pixels = [
-            [236, 130, [18, 64, 88]],
-            [405, 492, [22, 89, 118]],
-            [594, 148, [26, 88, 114]],
-            [773, 138, [179, 125, 5]],
-            [772, 164, [171, 111, 0]],
-        ]
-        
-        info_wait = pixels_wait(info_pixels, msg="Wait info screen", mistake=20, wait_limit=10, timeout=1)
-        if info_wait.count(True) != len(info_pixels):
-            self.log("Info screen not detected")
-            _ensure_main_screen()
-            return None
+        # Wait for info screen to load
+        sleep(1)
             
         # 4. Click copy ID
         click(773, 138)
