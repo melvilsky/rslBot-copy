@@ -815,6 +815,8 @@ class App(Foundation):
         if not _ensure_main_screen():
             self.log("Failed to reach main screen before collecting ID")
             return None
+            
+        sleep(2)
         
         # 1. Click main screen (42, 79)
         click(base_x + 42, base_y + 79)
@@ -828,7 +830,7 @@ class App(Foundation):
         ]
         
         # Wait up to 10 seconds for the settings screen
-        settings_wait = pixels_wait(settings_pixels, msg="Wait settings screen", mistake=15, wait_limit=10, timeout=1)
+        settings_wait = pixels_wait(settings_pixels, msg="Wait settings screen", mistake=20, wait_limit=10, timeout=1)
         if settings_wait.count(True) != len(settings_pixels):
             self.log("Settings screen not detected")
             _ensure_main_screen()
@@ -847,7 +849,7 @@ class App(Foundation):
             [base_x + 772, base_y + 164, [171, 111, 0]],
         ]
         
-        info_wait = pixels_wait(info_pixels, msg="Wait info screen", mistake=15, wait_limit=10, timeout=1)
+        info_wait = pixels_wait(info_pixels, msg="Wait info screen", mistake=20, wait_limit=10, timeout=1)
         if info_wait.count(True) != len(info_pixels):
             self.log("Info screen not detected")
             _ensure_main_screen()
