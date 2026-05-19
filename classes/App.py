@@ -818,15 +818,15 @@ class App(Foundation):
             
         sleep(2)
         
-        # 1. Click main screen (42, 79)
-        click(base_x + 42, base_y + 79)
+        # 1. Click main screen avatar
+        click(42, 79)
         self.log('Clicked main screen avatar (42, 79)')
         
         # 2. Wait for settings screen
         settings_pixels = [
-            [base_x + 47, base_y + 196, [231, 206, 88]],
-            [base_x + 138, base_y + 270, [8, 70, 100]],
-            [base_x + 48, base_y + 348, [231, 206, 88]],
+            [47, 196, [231, 206, 88]],
+            [138, 270, [8, 70, 100]],
+            [48, 348, [231, 206, 88]],
         ]
         
         # Wait up to 10 seconds for the settings screen
@@ -837,16 +837,16 @@ class App(Foundation):
             return None
             
         # Click info tab (last landmark)
-        click(base_x + 48, base_y + 348)
+        click(48, 348)
         self.log('Clicked Info tab (48, 348)')
         
         # 3. Wait for info screen
         info_pixels = [
-            [base_x + 236, base_y + 130, [18, 64, 88]],
-            [base_x + 405, base_y + 492, [22, 89, 118]],
-            [base_x + 594, base_y + 148, [26, 88, 114]],
-            [base_x + 773, base_y + 138, [179, 125, 5]],
-            [base_x + 772, base_y + 164, [171, 111, 0]],
+            [236, 130, [18, 64, 88]],
+            [405, 492, [22, 89, 118]],
+            [594, 148, [26, 88, 114]],
+            [773, 138, [179, 125, 5]],
+            [772, 164, [171, 111, 0]],
         ]
         
         info_wait = pixels_wait(info_pixels, msg="Wait info screen", mistake=20, wait_limit=10, timeout=1)
@@ -856,9 +856,9 @@ class App(Foundation):
             return None
             
         # 4. Click copy ID
-        click(base_x + 773, base_y + 138)
+        click(773, 138)
         sleep(0.5)
-        click(base_x + 772, base_y + 164)
+        click(772, 164)
         sleep(1)
         self.log('Clicked Copy ID button')
         
