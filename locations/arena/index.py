@@ -56,6 +56,7 @@ defeat = get_coordinate(_shared, 'defeat', source='coordinates/arena_shared.json
 defeat_mistake = get_mistake(_shared, 'defeat', 35)
 tab_battle = get_coordinate(_shared, 'tab_battle', source='coordinates/arena_shared.json')
 battle_end_coord = get_coordinate(_shared, 'battle_end', source='coordinates/arena_shared.json')
+battle_active_coord = get_coordinate(_shared, 'battle_active', source='coordinates/arena_shared.json') if 'battle_active' in _shared else None
 start_battle_coord = get_coordinate(_shared, 'start_battle', source='coordinates/arena_shared.json')
 refill_click_coord = get_coordinate(_shared, 'refill_click', source='coordinates/arena_shared.json')
 claim_chest_coord = get_coordinate(_shared, 'claim_chest', source='coordinates/arena_shared.json')
@@ -664,9 +665,12 @@ class ArenaFactory(Location):
                 sleep(0.5)
                 waited_for_state += 0.5
                 
-                # Проверка 1: Бой начался (или сразу закончился из-за quick battle)
+                # Проверка 1: Бой начался (белые часы) или уже закончился (серые часы на результатах)
                 _be_mistake = get_mistake(_shared, 'battle_end', 3)
-                if pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue_active") or pixel_check_new(battle_end_coord, mistake=_be_mistake, label="battle_active_check"):
+                _ba_mistake = get_mistake(_shared, 'battle_active', 30)
+                battle_in_progress = battle_active_coord and pixel_check_new(battle_active_coord, mistake=_ba_mistake, label="battle_active_check")
+                results_visible = pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue_active") or pixel_check_new(battle_end_coord, mistake=_be_mistake, label="battle_active_check")
+                if battle_in_progress or results_visible:
                     self.log('Battle active or finished (tap to continue visible)')
                     battle_started = True
                     break
@@ -851,10 +855,13 @@ class ArenaFactory(Location):
                     sleep(0.5)
                     waited_for_state += 0.5
 
-                    # Проверка 1: Битва началась
+                    # Проверка 1: Битва началась (белые часы во время боя) или уже закончилась (серые часы на результатах)
                     _be_mistake = get_mistake(_shared, 'battle_end', 3)
-                    if pixel_check_new(battle_end_coord, mistake=_be_mistake, label="battle_active_check"):
-                        self.log('Battle active (clock icon found)')
+                    _ba_mistake = get_mistake(_shared, 'battle_active', 30)
+                    battle_in_progress = battle_active_coord and pixel_check_new(battle_active_coord, mistake=_ba_mistake, label="battle_active_check")
+                    results_visible = pixel_check_new(battle_end_coord, mistake=_be_mistake, label="results_check")
+                    if battle_in_progress or results_visible:
+                        self.log('Battle active or already finished')
                         battle_started = True
                         break
 
