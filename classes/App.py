@@ -818,19 +818,28 @@ class App(Foundation):
             
         sleep(2)
         
-        # 1. Click main screen avatar
+        # 1. Click main screen avatar (no pixel check, just click)
         click(42, 79)
         self.log('Clicked main screen avatar (42, 79)')
         
-        # Wait for settings screen to open
-        sleep(2)
+        # 2. Wait for settings screen to appear
+        settings_pixels = [
+            [47, 196, [231, 206, 88]],
+            [138, 270, [8, 70, 100]],
+            [48, 348, [231, 206, 88]],
+        ]
+        settings_wait = pixels_wait(settings_pixels, msg="Wait settings screen", mistake=20, wait_limit=10, timeout=1)
+        if settings_wait.count(True) == 0:
+            self.log("Settings screen not detected")
+            _ensure_main_screen()
+            return None
             
-        # Click info tab
+        # 3. Click info tab (no pixel check, just click)
         click(48, 348)
         self.log('Clicked Info tab (48, 348)')
         
         # Wait for info screen to load
-        sleep(1)
+        sleep(2)
             
         # 4. Click copy ID
         click(773, 138)
