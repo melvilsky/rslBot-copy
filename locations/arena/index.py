@@ -939,30 +939,28 @@ class ArenaFactory(Location):
                     self.classic_defeat_offset = i + 1
                     self.log(f'Defeat at position {i}, next pass will start from offset {self.classic_defeat_offset}')
 
-                tap_to_continue(times=2, wait_after=3)
-                sleep(2)
+                # Кликаем tap_to_continue и ждём пока экран результата закроется
+                # Дополнительно проверяем каждые 0.5с появление battle_active (белые часы боя)
+                # Если screen не закрылся — кликаем ещё раз
+                _max_close_wait = 10
+                _close_interval = 0.5
+                _close_waited = 0
+                _ba_mistake = get_mistake(_shared, 'battle_active', 10)
 
-                max_wait_time = 7
-                check_interval = 0.5
-                waited = 0
-                while is_results_screen_visible() and waited < max_wait_time:
-                    sleep(check_interval)
-                    waited += check_interval
+                tap_to_continue(times=3, wait_after=1)
 
-                if is_results_screen_visible():
-                    self.log('Victory/defeat screen still visible, retrying tap_to_continue')
-                    tap_to_continue(times=2, wait_after=3)
-                    sleep(2)
-
-                    waited = 0
-                    while is_results_screen_visible() and waited < max_wait_time:
-                        sleep(check_interval)
-                        waited += check_interval
-
-                if not is_results_screen_visible():
-                    self.log('Victory/defeat screen closed successfully')
+                while _close_waited < _max_close_wait:
+                    sleep(_close_interval)
+                    _close_waited += _close_interval
+                    # Если белые часы (активный бой) пропали — значит мы уже на другом экране
+                    if battle_active_coord and not pixel_check_new(battle_active_coord, mistake=_ba_mistake, label="wait_results_close"):
+                        self.log('Results screen closed (battle clock gone)')
+                        break
                 else:
-                    self.log('Warning: Victory/defeat screen may still be visible')
+                    self.log('Warning: results screen may still be visible, tapping again')
+                    tap_to_continue(times=3, wait_after=2)
+
+                sleep(2)
 
         if len(results_local):
             self.results.append(results_local)
