@@ -899,9 +899,13 @@ class App(Foundation):
         self.entries = {}
         self.log(f'[loadconfig] Cleared {cleared} entries before loading profile: {filename_no_ext}')
 
-        self.config = self._prepare_config(config_json)
+        # Имя профиля и player_id должны быть установлены ДО _prepare_config,
+        # иначе инстансы локаций при создании через INSTANCES_MAP[..] прочитают
+        # current_player_name=None и подгрузят состояние рефиллов (refill_state.json)
+        # из профиля "_default", а не из текущего профиля.
         self.current_player_name = filename_no_ext
         self.current_player_id = config_json.get('player_id') if isinstance(config_json.get('player_id'), str) else None
+        self.config = self._prepare_config(config_json)
         self.log(f'Config loaded from profile: {filename_no_ext}')
 
     def load_profile_by_name(self, filename_no_ext):

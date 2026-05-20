@@ -523,6 +523,47 @@ class ArenaFactory(Location):
 
         return 'UNKNOWN'
 
+    def _is_arena_list_visible(self, mistake=10):
+        for position, pos in self.button_locations.items():
+            if pixel_check_new([pos[0], pos[1], ATTACK_BUTTON_RGB], mistake=mistake, label=f"list_button_{position}"):
+                return True
+        return False
+
+    def _close_classic_result_screen(self, max_attempts=5):
+        """
+        BattleEnd is the result screen. Tap twice, then check Victory/Defeat
+        pixels again; if they are still visible, repeat the double tap.
+        """
+        for attempt in range(1, max_attempts + 1):
+            if self._is_arena_list_visible():
+                self.log('Back on arena list')
+                return True
+
+            self.log(f'Closing result screen with double tap (attempt {attempt}/{max_attempts})')
+            tap_to_continue(times=2, wait_after=2)
+
+            if is_results_screen_visible():
+                self.log('Result screen is still visible after double tap')
+                continue
+
+            if self._is_arena_list_visible():
+                self.log('Back on arena list')
+                return True
+
+            self.log('Result screen closed, waiting for arena list')
+            for _ in range(6):
+                sleep(0.5)
+                if self._is_arena_list_visible():
+                    self.log('Back on arena list')
+                    return True
+                if is_results_screen_visible():
+                    self.log('Result screen appeared again')
+                    break
+
+        current_screen = self.determine_current_screen(is_tag=False, x=self.button_locations[1][0], y=self.button_locations[1][1])
+        self.log(f'Failed to close result screen, current screen detected as: {current_screen}')
+        return False
+
     def obtain(self):
         x = self.tiers_coordinates[0]
         y = self.tiers_coordinates[1]
@@ -928,27 +969,10 @@ class ArenaFactory(Location):
                     self.classic_defeat_offset = i + 1
                     self.log(f'Defeat at position {i}, next pass will start from offset {self.classic_defeat_offset}')
 
-                # Кликаем tap_to_continue 2 раза и ждём возврата на страницу выбора соперника
-                tap_to_continue(times=2, wait_after=2)
-
-                # Проверяем что вернулись на страницу списка соперников (кнопка атаки видна)
-                _max_close_wait = 8
-                _close_interval = 0.5
-                _close_waited = 0
-                _back_on_list = False
-                pos = self.button_locations[1]
-
-                while _close_waited < _max_close_wait:
-                    sleep(_close_interval)
-                    _close_waited += _close_interval
-                    if pixel_check_new([pos[0], pos[1], ATTACK_BUTTON_RGB], mistake=10, label="back_on_list"):
-                        self.log('Back on arena list')
-                        _back_on_list = True
-                        break
-
-                if not _back_on_list:
-                    self.log('Still not on arena list, tapping again')
-                    tap_to_continue(times=2, wait_after=2)
+                if not self._close_classic_result_screen():
+                    self.log('Could not return to arena list after result, stopping Arena Classic')
+                    self.terminated = True
+                    break
 
                 sleep(1)
 
