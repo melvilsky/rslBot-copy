@@ -6,7 +6,7 @@ from helpers.updater import is_update_available, should_check_for_updates, launc
 from classes.TaskManager import TaskManager
 from classes.Foundation import Foundation
 from helpers.logging_utils import log, log_save, set_debug_mode
-from helpers.mouse import click, click_detected_button
+from helpers.mouse import click, click_detected_button, tap_to_continue
 from helpers.popups import close_popup, close_popup_recursive
 from helpers.vision import (
     detect_buttons,
@@ -36,7 +36,7 @@ except ImportError:
     BadRequest = None
 from locations.rewards.index import Rewards
 from locations.live_arena.index import ArenaLive
-from locations.arena.index import ArenaClassic, ArenaTag
+from locations.arena.index import ArenaClassic, ArenaTag, is_results_screen_visible
 from locations.demon_lord.index import DemonLord
 from locations.faction_wars.index import FactionWars
 from locations.iron_twins_fortress.index import IronTwins
@@ -292,7 +292,7 @@ class App(Foundation):
 
         self.E_INDEX_PAGE_TIMEOUT = {
             'name': "IndexPageTimeout",
-            'delay': 180,
+            'delay': 75,
             'interval': 1,
             'expect': lambda: True,
             'blocking': True,
@@ -1129,6 +1129,39 @@ class App(Foundation):
         else:
             return "No 'game_path' provided field in the config"
 
+    def _recover_index_page_after_timeout(self):
+        self.log('Index- timeout recovery: trying to return to index page')
+
+        for attempt in range(1, 4):
+            if find_needle_burger():
+                self.log('Index- timeout recovery: index page detected')
+                return True
+
+            if is_results_screen_visible():
+                self.log(f'Index- timeout recovery: arena result screen detected, closing it ({attempt}/3)')
+                tap_to_continue(times=2, wait_after=1)
+                sleep(1)
+                if is_results_screen_visible():
+                    self.log('Index- timeout recovery: result screen is still visible')
+                    continue
+
+            close_popup_recursive(timeout=0.5, delay=0.5)
+
+            if find_needle_burger():
+                self.log('Index- timeout recovery: index page detected after closing popups')
+                return True
+
+            self.log(f'Index- timeout recovery: pressing Escape ({attempt}/3)')
+            pyautogui.press('escape')
+            sleep(1)
+
+        if find_needle_burger():
+            self.log('Index- timeout recovery: index page detected')
+            return True
+
+        self.log('Index- timeout recovery: index page is still not detected')
+        return False
+
     def prepare(self, predicate=None, calibrate=True):
         x_move = self.window_axis['x'] if self.window_axis and 'x' in self.window_axis else 0
         y_move = self.window_axis['y'] if self.window_axis and 'y' in self.window_axis else 0
@@ -1145,12 +1178,8 @@ class App(Foundation):
         ])
 
         if result and result.get('name') == 'IndexPageTimeout':
-            self.log('Index page not found within timeout, attempting ESC recovery')
-            for _ in range(5):
-                pyautogui.press('escape')
-                sleep(1)
-            close_popup_recursive()
-            sleep(2)
+            self.log('Index page not found within timeout')
+            self._recover_index_page_after_timeout()
 
         if calibrate:
             self.log('Calibrating the window')

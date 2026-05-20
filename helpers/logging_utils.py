@@ -65,6 +65,11 @@ class ColoredFormatter(logging.Formatter):
 logger = logging.getLogger('RSLBot')
 logger.setLevel(logging.INFO)
 
+
+def _get_logs_dir():
+    return os.path.abspath('logs')
+
+
 if not logger.handlers:
     c_handler = logging.StreamHandler(sys.stdout)
     c_format = ColoredFormatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S')
@@ -72,13 +77,14 @@ if not logger.handlers:
     logger.addHandler(c_handler)
 
     try:
-        logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+        logs_dir = _get_logs_dir()
         os.makedirs(logs_dir, exist_ok=True)
         log_filename = os.path.join(logs_dir, f"log-{datetime.now().strftime('%Y-%m-%d')}.txt")
         f_handler = RotatingFileHandler(log_filename, maxBytes=5 * 1024 * 1024, backupCount=5, encoding='utf-8')
         f_file_format = logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S')
         f_handler.setFormatter(f_file_format)
         logger.addHandler(f_handler)
+        logger.info(f"[logging] File log: {log_filename}")
     except Exception as e:
         print(f"Failed to setup log file handler: {e}")
 
