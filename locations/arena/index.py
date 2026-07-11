@@ -50,6 +50,7 @@ _classic_data = load_coordinates('arena_classic.json', required=True)
 
 # Общие координаты ArenaFactory (из arena_shared.json)
 button_refresh = get_coordinate(_shared, 'button_refresh', source='coordinates/arena_shared.json')
+button_refresh_mistake = get_mistake(_shared, 'button_refresh', 30)
 refill_free = get_coordinate(_shared, 'refill_free', source='coordinates/arena_shared.json')
 refill_paid = get_coordinate(_shared, 'refill_paid', source='coordinates/arena_shared.json')
 refill_ruby = get_coordinate(_shared, 'refill_ruby', source='coordinates/arena_shared.json')
@@ -60,6 +61,12 @@ battle_active_coord = get_coordinate(_shared, 'battle_active', source='coordinat
 start_battle_coord = get_coordinate(_shared, 'start_battle', source='coordinates/arena_shared.json')
 refill_click_coord = get_coordinate(_shared, 'refill_click', source='coordinates/arena_shared.json')
 claim_chest_coord = get_coordinate(_shared, 'claim_chest', source='coordinates/arena_shared.json')
+result_tap_to_continue = get_coordinate(
+    _shared,
+    'result_tap_to_continue',
+    source='coordinates/arena_shared.json',
+)
+result_tap_to_continue_mistake = get_mistake(_shared, 'result_tap_to_continue', 45)
 swipe_attack_coord = _shared['swipe_attack']
 swipe_refresh_coord = _shared['swipe_refresh']
 swipe_reward_coord = _shared['swipe_reward']
@@ -145,7 +152,17 @@ def is_victory_screen_visible():
     return False
 
 def is_results_screen_visible():
-    return is_defeat_screen_visible() or is_victory_screen_visible()
+    if is_defeat_screen_visible() or is_victory_screen_visible():
+        return True
+
+    # The result header can still be animating when BattleEnd is detected.
+    # The bottom prompt is an independent fallback captured from the stable
+    # Classic Arena victory screen.
+    return pixel_check_new(
+        result_tap_to_continue,
+        mistake=result_tap_to_continue_mistake,
+        label="result_tap_to_continue",
+    )
 
 def is_refill_popup_visible(is_tag=False):
     points = REFILL_POPUP_TAG_POINTS if is_tag else REFILL_POPUP_POINTS
@@ -525,22 +542,22 @@ class ArenaFactory(Location):
         return 'UNKNOWN'
 
     def _is_arena_list_visible(self, mistake=10):
-        # Active Attack buttons are a strong signal, but not a permanent one:
-        # after the visible opponents have been used, the Arena list can be
-        # open without any yellow button on screen.
+        # The refresh button remains visible even when every active Attack
+        # button in the current group has already been used.
+        if pixel_check_new(
+            button_refresh,
+            mistake=button_refresh_mistake,
+            label="list_refresh_button",
+        ):
+            return True
+
         for position, pos in self.button_locations.items():
             if pixel_check_new([pos[0], pos[1], ATTACK_BUTTON_RGB], mistake=mistake, label=f"list_button_{position}"):
                 return True
         return False
 
     def _wait_for_classic_post_result_state(self, timeout=10, interval=0.5):
-        """Wait for a result retry, an Arena list button, or a stable close.
-
-        ``RESULT_CLOSED`` is intentionally distinct from ``ARENA_LIST``. The
-        list may have no active Attack buttons after the first visible group
-        of opponents was already processed. The caller can safely continue:
-        the attack loop verifies an exact Attack-button pixel before clicking.
-        """
+        """Wait for a visible result screen or positive Arena list signal."""
         checks = max(1, int(timeout / interval))
         for check in range(checks):
             if self._is_arena_list_visible():
@@ -558,42 +575,48 @@ class ArenaFactory(Location):
 
             sleep(interval)
 
-        return 'RESULT_CLOSED'
+        # Absence of result pixels is not proof that the result was closed.
+        # During medal/progress animations neither result nor list can be
+        # recognized for several seconds.
+        return 'UNKNOWN'
 
     def _close_classic_result_screen(self, max_attempts=5, settle_timeout=10):
         """
-        Close BattleEnd without tapping through loading/unknown screens.
+        Close both Classic Arena result stages and require positive
+        confirmation of the Arena list:
 
-        A missing Attack button does not prove that the Arena list is absent:
-        all currently visible opponents may already have been processed.
+        1. Reward / TAP TO CONTINUE.
+        2. Battle summary / RETURN TO ARENA.
+
+        BattleEnd itself authorizes a safe tap on the bottom result area. This
+        is important while the Victory header is still animating and its
+        detector points have not settled yet.
         """
         for attempt in range(1, max_attempts + 1):
             if self._is_arena_list_visible():
                 self.log('Back on arena list')
                 return True
 
-            if not is_results_screen_visible():
-                state = self._wait_for_classic_post_result_state(timeout=settle_timeout)
-                if state == 'ARENA_LIST':
-                    self.log('Back on arena list')
-                    return True
-                if state == 'RESULT_CLOSED':
-                    self.log('Result screen closed; no active Attack buttons are visible, continuing guarded scan')
-                    return True
+            if is_results_screen_visible():
+                self.log(f'Closing detected result screen (attempt {attempt}/{max_attempts})')
+            else:
+                self.log(
+                    f'Result pixels are not stable yet; tapping the BattleEnd continue area '
+                    f'(attempt {attempt}/{max_attempts})'
+                )
 
-            self.log(f'Closing result screen with double tap (attempt {attempt}/{max_attempts})')
-            tap_to_continue(times=2, wait_after=2)
+            # One tap per attempt prevents a second click from landing on the
+            # Arena list if the transition completes quickly.
+            tap_to_continue(times=1, wait_before=1, wait_after=2)
 
             state = self._wait_for_classic_post_result_state(timeout=settle_timeout)
             if state == 'RESULTS_SCREEN':
-                self.log('Result screen is still visible after double tap')
+                self.log('Another result stage is visible after tap')
                 continue
             if state == 'ARENA_LIST':
                 self.log('Back on arena list')
                 return True
-            if state == 'RESULT_CLOSED':
-                self.log('Result screen closed; no active Attack buttons are visible, continuing guarded scan')
-                return True
+            self.log('Neither result screen nor arena list is confirmed; retrying continue tap')
 
         current_screen = self.determine_current_screen(is_tag=False, x=self.button_locations[1][0], y=self.button_locations[1][1])
         self.log(f'Failed to close result screen, current screen detected as: {current_screen}')
