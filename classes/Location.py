@@ -23,6 +23,7 @@ class Location(Foundation):
         self.context = None
         self.terminated = False
         self.completed = False
+        self.abort_reason = None
         self.event_dispatcher = EventDispatcher()
         self.duration = Duration()
         self.debug = Debug(app=app, name=name)
@@ -110,7 +111,10 @@ class Location(Foundation):
     def finish(self):
         close_popup_recursive()
         self.duration.end()
-        message_done = f"Done: {self.NAME} | Duration: {self.duration.get_last()}"
+        if self.abort_reason:
+            message_done = f"Aborted: {self.NAME} | {self.abort_reason} | Duration: {self.duration.get_last()}"
+        else:
+            message_done = f"Done: {self.NAME} | Duration: {self.duration.get_last()}"
 
         self.log(message_done)
         self.event_dispatcher.publish('finish')
@@ -145,6 +149,7 @@ class Location(Foundation):
         self.update = msg_ctx
         self.context = ctx
         self.terminated = False
+        self.abort_reason = None
         self.break_loops = False
         self.run_counter += 1
         self.duration.start()

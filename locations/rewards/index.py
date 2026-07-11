@@ -64,10 +64,58 @@ class Rewards(Location):
         update_stats('rewards', current, profile_name=profile)
 
     def _run(self, props=None):
-        self.quests_run()
-        self.play_time_run()
-        self.clan_war_rewards()
-        self.clan_quests_rewards()
+        steps = [
+            ('Quests', self.quests_run),
+            ('Play-Time', self.play_time_run),
+            ('Clan War', self.clan_war_rewards),
+            ('Clan Quests', self.clan_quests_rewards),
+        ]
+
+        for name, callback in steps:
+            if not self._run_reward_step(name, callback):
+                return
+
+    def _ensure_index_page(self, attempts=3, escape_attempts=3, context='Rewards'):
+        """Return to the Index Page without continuing with blind clicks.
+
+        A reward screen is not always a regular popup, so closing popup buttons
+        alone is insufficient. First allow animations/popups to settle, then
+        use Escape one level at a time and verify the Index Page after each
+        action.
+        """
+        for _ in range(attempts):
+            if is_index_page(logger=False):
+                return True
+            close_popup()
+            sleep(1)
+
+        self.log(f'{context}: Index Page not detected, trying Escape recovery')
+        for attempt in range(1, escape_attempts + 1):
+            pyautogui.press('escape')
+            sleep(1)
+            close_popup()
+
+            if is_index_page(logger=False):
+                self.log(f'{context}: returned to Index Page after Escape ({attempt}/{escape_attempts})')
+                return True
+
+        self.log(f'{context}: failed to return to Index Page')
+        return False
+
+    def _run_reward_step(self, name, callback):
+        if not self._ensure_index_page(context=f'before {name}'):
+            self.abort_reason = f'Index Page unavailable before {name}'
+            self.log(f'{name} skipped: {self.abort_reason}')
+            return False
+
+        callback()
+
+        if not self._ensure_index_page(context=f'after {name}'):
+            self.abort_reason = f'could not return to Index Page after {name}'
+            self.log(f'Rewards stopped: {self.abort_reason}')
+            return False
+
+        return True
 
     def quests_obtain(self):
         for i in range(len(QUESTS_TABS)):
@@ -137,30 +185,24 @@ class Rewards(Location):
         close_popup_recursive()
 
     def quests_run(self):
-        if is_index_page():
-            if pixel_check_new([276, 480, RGB_INDICATOR], mistake=20):
-                # enter
-                click(276, 480)
-                sleep(1)
-                # obtain
-                self.quests_obtain()
-            else:
-                self.log('Quests rewards are not available')
+        if pixel_check_new([276, 480, RGB_INDICATOR], mistake=20):
+            # enter
+            click(276, 480)
+            sleep(1)
+            # obtain
+            self.quests_obtain()
         else:
-            self.log("Skipped! No Index Page found")
+            self.log('Quests rewards are not available')
 
     def play_time_run(self):
-        if is_index_page():
-            PLAY_TIME_INDICATOR = [844, 441, [177, 140, 56]]
-            if pixel_check_new(PLAY_TIME_INDICATOR, mistake=20):
-                click(844, 441)
-                sleep(1)
-                self.play_time_obtain()
-                close_popup_recursive()
-            else:
-                self.log('Play-Time rewards are not available')
+        PLAY_TIME_INDICATOR = [844, 441, [177, 140, 56]]
+        if pixel_check_new(PLAY_TIME_INDICATOR, mistake=20):
+            click(844, 441)
+            sleep(1)
+            self.play_time_obtain()
+            close_popup_recursive()
         else:
-            self.log("Skipped! No Index Page found")
+            self.log('Play-Time rewards are not available')
 
     def clan_war_rewards(self):
         # grabs "clan war" related rewards
