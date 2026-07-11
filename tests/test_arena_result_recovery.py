@@ -95,7 +95,7 @@ class Location:
 
 location_module.Location = Location
 
-from locations.arena.index import ArenaFactory
+from locations.arena.index import ArenaFactory, is_results_screen_visible, result_tap_to_continue
 
 
 class ArenaResultRecoveryTests(unittest.TestCase):
@@ -106,40 +106,68 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         arena._is_arena_list_visible = MagicMock(return_value=False)
         return arena
 
-    @patch('locations.arena.index.tap_to_continue')
-    @patch('locations.arena.index.is_results_screen_visible')
-    def test_closed_result_without_attack_buttons_is_success(self, results_visible, tap):
+    @patch('locations.arena.index.pixel_check_new', return_value=True)
+    def test_arena_list_can_be_confirmed_by_refresh_button(self, pixel_check):
+        arena = ArenaFactory.__new__(ArenaFactory)
+        arena.button_locations = {1: [855, 205]}
+
+        self.assertTrue(arena._is_arena_list_visible())
+        pixel_check.assert_called_once()
+        self.assertEqual(pixel_check.call_args.args[0][0:2], [817, 133])
+
+    @patch('locations.arena.index.close_popup', return_value=[None, False])
+    @patch('locations.arena.index.is_results_screen_visible', return_value=False)
+    def test_wait_timeout_remains_unknown_without_positive_signal(self, _results_visible, _close_popup):
         arena = self.make_arena()
-        results_visible.return_value = True
-        arena._wait_for_classic_post_result_state = MagicMock(return_value='RESULT_CLOSED')
 
-        closed = arena._close_classic_result_screen(settle_timeout=0.5)
+        state = arena._wait_for_classic_post_result_state(timeout=1, interval=0.5)
 
-        self.assertTrue(closed)
-        tap.assert_called_once_with(times=2, wait_after=2)
-        arena.log.assert_any_call(
-            'Result screen closed; no active Attack buttons are visible, continuing guarded scan'
+        self.assertEqual(state, 'UNKNOWN')
+
+    @patch('locations.arena.index.pixel_check_new', return_value=True)
+    @patch('locations.arena.index.is_victory_screen_visible', return_value=False)
+    @patch('locations.arena.index.is_defeat_screen_visible', return_value=False)
+    def test_tap_to_continue_pixel_is_result_fallback(self, _defeat, _victory, pixel_check):
+        self.assertTrue(is_results_screen_visible())
+        pixel_check.assert_called_once_with(
+            result_tap_to_continue,
+            mistake=45,
+            label='result_tap_to_continue',
         )
 
     @patch('locations.arena.index.tap_to_continue')
     @patch('locations.arena.index.is_results_screen_visible')
-    def test_unknown_transition_is_never_tapped_blindly(self, results_visible, tap):
+    def test_result_close_requires_positive_arena_list_confirmation(self, results_visible, tap):
+        arena = self.make_arena()
+        results_visible.return_value = True
+        arena._wait_for_classic_post_result_state = MagicMock(return_value='UNKNOWN')
+
+        closed = arena._close_classic_result_screen(max_attempts=2, settle_timeout=0.5)
+
+        self.assertFalse(closed)
+        self.assertEqual(tap.call_count, 2)
+
+    @patch('locations.arena.index.tap_to_continue')
+    @patch('locations.arena.index.is_results_screen_visible')
+    def test_battle_end_is_tapped_even_before_result_pixels_settle(self, results_visible, tap):
         arena = self.make_arena()
         results_visible.return_value = False
-        arena._wait_for_classic_post_result_state = MagicMock(return_value='RESULT_CLOSED')
+        arena._wait_for_classic_post_result_state = MagicMock(return_value='ARENA_LIST')
 
         closed = arena._close_classic_result_screen(settle_timeout=0.5)
 
         self.assertTrue(closed)
-        tap.assert_not_called()
+        tap.assert_called_once_with(times=1, wait_before=1, wait_after=2)
 
     @patch('locations.arena.index.tap_to_continue')
     @patch('locations.arena.index.is_results_screen_visible')
-    def test_visible_result_is_retried_until_it_closes(self, results_visible, tap):
+    def test_reward_and_battle_summary_are_closed_before_arena_list(self, results_visible, tap):
         arena = self.make_arena()
         results_visible.return_value = True
+        # First tap changes TAP TO CONTINUE into RETURN TO ARENA; the second
+        # tap finally exposes the Classic Arena opponent list.
         arena._wait_for_classic_post_result_state = MagicMock(
-            side_effect=['RESULTS_SCREEN', 'RESULT_CLOSED']
+            side_effect=['RESULTS_SCREEN', 'ARENA_LIST']
         )
 
         closed = arena._close_classic_result_screen(settle_timeout=0.5)
