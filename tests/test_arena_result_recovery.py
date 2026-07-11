@@ -95,7 +95,7 @@ class Location:
 
 location_module.Location = Location
 
-from locations.arena.index import ArenaFactory, is_results_screen_visible, result_tap_to_continue
+from locations.arena.index import ArenaFactory, get_results_screen_signal, result_tap_to_continue
 
 
 class ArenaResultRecoveryTests(unittest.TestCase):
@@ -109,14 +109,27 @@ class ArenaResultRecoveryTests(unittest.TestCase):
     @patch('locations.arena.index.pixel_check_new', return_value=True)
     def test_arena_list_can_be_confirmed_by_refresh_button(self, pixel_check):
         arena = ArenaFactory.__new__(ArenaFactory)
-        arena.button_locations = {1: [855, 205]}
+        arena.button_locations = {}
 
         self.assertTrue(arena._is_arena_list_visible())
         pixel_check.assert_called_once()
         self.assertEqual(pixel_check.call_args.args[0][0:2], [817, 133])
+        self.assertEqual(pixel_check.call_args.kwargs['mistake'], 5)
+        self.assertEqual(arena._last_arena_list_signal, 'REFRESH_BUTTON')
 
     @patch('locations.arena.index.close_popup', return_value=[None, False])
-    @patch('locations.arena.index.is_results_screen_visible', return_value=False)
+    @patch('locations.arena.index.get_results_screen_signal', return_value='VICTORY')
+    def test_result_screen_has_priority_over_false_arena_list_match(self, _results_visible, _close_popup):
+        arena = self.make_arena()
+        arena._is_arena_list_visible.return_value = True
+
+        state = arena._wait_for_classic_post_result_state(timeout=1, interval=0.5)
+
+        self.assertEqual(state, 'RESULTS_SCREEN')
+        arena._is_arena_list_visible.assert_not_called()
+
+    @patch('locations.arena.index.close_popup', return_value=[None, False])
+    @patch('locations.arena.index.get_results_screen_signal', return_value=None)
     def test_wait_timeout_remains_unknown_without_positive_signal(self, _results_visible, _close_popup):
         arena = self.make_arena()
 
@@ -128,7 +141,7 @@ class ArenaResultRecoveryTests(unittest.TestCase):
     @patch('locations.arena.index.is_victory_screen_visible', return_value=False)
     @patch('locations.arena.index.is_defeat_screen_visible', return_value=False)
     def test_tap_to_continue_pixel_is_result_fallback(self, _defeat, _victory, pixel_check):
-        self.assertTrue(is_results_screen_visible())
+        self.assertEqual(get_results_screen_signal(), 'TAP_TO_CONTINUE')
         pixel_check.assert_called_once_with(
             result_tap_to_continue,
             mistake=45,
@@ -136,10 +149,10 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         )
 
     @patch('locations.arena.index.tap_to_continue')
-    @patch('locations.arena.index.is_results_screen_visible')
+    @patch('locations.arena.index.get_results_screen_signal')
     def test_result_close_requires_positive_arena_list_confirmation(self, results_visible, tap):
         arena = self.make_arena()
-        results_visible.return_value = True
+        results_visible.return_value = 'VICTORY'
         arena._wait_for_classic_post_result_state = MagicMock(return_value='UNKNOWN')
 
         closed = arena._close_classic_result_screen(max_attempts=2, settle_timeout=0.5)
@@ -148,10 +161,10 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         self.assertEqual(tap.call_count, 2)
 
     @patch('locations.arena.index.tap_to_continue')
-    @patch('locations.arena.index.is_results_screen_visible')
+    @patch('locations.arena.index.get_results_screen_signal')
     def test_battle_end_is_tapped_even_before_result_pixels_settle(self, results_visible, tap):
         arena = self.make_arena()
-        results_visible.return_value = False
+        results_visible.return_value = None
         arena._wait_for_classic_post_result_state = MagicMock(return_value='ARENA_LIST')
 
         closed = arena._close_classic_result_screen(settle_timeout=0.5)
@@ -160,10 +173,22 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         tap.assert_called_once_with(times=1, wait_before=1, wait_after=2)
 
     @patch('locations.arena.index.tap_to_continue')
-    @patch('locations.arena.index.is_results_screen_visible')
+    @patch('locations.arena.index.get_results_screen_signal', return_value=None)
+    def test_false_list_match_cannot_skip_first_battle_end_tap(self, _results_visible, tap):
+        arena = self.make_arena()
+        arena._is_arena_list_visible.return_value = True
+        arena._wait_for_classic_post_result_state = MagicMock(return_value='ARENA_LIST')
+
+        closed = arena._close_classic_result_screen(settle_timeout=0.5)
+
+        self.assertTrue(closed)
+        tap.assert_called_once_with(times=1, wait_before=1, wait_after=2)
+
+    @patch('locations.arena.index.tap_to_continue')
+    @patch('locations.arena.index.get_results_screen_signal')
     def test_reward_and_battle_summary_are_closed_before_arena_list(self, results_visible, tap):
         arena = self.make_arena()
-        results_visible.return_value = True
+        results_visible.return_value = 'VICTORY'
         # First tap changes TAP TO CONTINUE into RETURN TO ARENA; the second
         # tap finally exposes the Classic Arena opponent list.
         arena._wait_for_classic_post_result_state = MagicMock(
