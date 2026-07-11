@@ -6,6 +6,7 @@ from helpers.common import (
     prepare_event,
     sleep,
 )
+from helpers.popups import close_popup, close_popup_recursive
 from helpers.game_actions import (
     calculate_win_rate,
     click_on_progress_info,
@@ -524,44 +525,105 @@ class ArenaFactory(Location):
         return 'UNKNOWN'
 
     def _is_arena_list_visible(self, mistake=10):
+        # Active Attack buttons are a strong signal, but not a permanent one:
+        # after the visible opponents have been used, the Arena list can be
+        # open without any yellow button on screen.
         for position, pos in self.button_locations.items():
             if pixel_check_new([pos[0], pos[1], ATTACK_BUTTON_RGB], mistake=mistake, label=f"list_button_{position}"):
                 return True
         return False
 
-    def _close_classic_result_screen(self, max_attempts=5):
+    def _wait_for_classic_post_result_state(self, timeout=10, interval=0.5):
+        """Wait for a result retry, an Arena list button, or a stable close.
+
+        ``RESULT_CLOSED`` is intentionally distinct from ``ARENA_LIST``. The
+        list may have no active Attack buttons after the first visible group
+        of opponents was already processed. The caller can safely continue:
+        the attack loop verifies an exact Attack-button pixel before clicking.
         """
-        BattleEnd is the result screen. Tap twice, then check Victory/Defeat
-        pixels again; if they are still visible, repeat the double tap.
+        checks = max(1, int(timeout / interval))
+        for check in range(checks):
+            if self._is_arena_list_visible():
+                return 'ARENA_LIST'
+
+            if is_results_screen_visible():
+                return 'RESULTS_SCREEN'
+
+            # Do not repeatedly click arbitrary screen areas during a loading
+            # transition. Only close a popup when its close button is detected.
+            if check % 4 == 0:
+                closed = close_popup()
+                if closed[0] is not None or closed[1]:
+                    self.log('Popup detected while returning from battle result')
+
+            sleep(interval)
+
+        return 'RESULT_CLOSED'
+
+    def _close_classic_result_screen(self, max_attempts=5, settle_timeout=10):
+        """
+        Close BattleEnd without tapping through loading/unknown screens.
+
+        A missing Attack button does not prove that the Arena list is absent:
+        all currently visible opponents may already have been processed.
         """
         for attempt in range(1, max_attempts + 1):
             if self._is_arena_list_visible():
                 self.log('Back on arena list')
                 return True
 
+            if not is_results_screen_visible():
+                state = self._wait_for_classic_post_result_state(timeout=settle_timeout)
+                if state == 'ARENA_LIST':
+                    self.log('Back on arena list')
+                    return True
+                if state == 'RESULT_CLOSED':
+                    self.log('Result screen closed; no active Attack buttons are visible, continuing guarded scan')
+                    return True
+
             self.log(f'Closing result screen with double tap (attempt {attempt}/{max_attempts})')
             tap_to_continue(times=2, wait_after=2)
 
-            if is_results_screen_visible():
+            state = self._wait_for_classic_post_result_state(timeout=settle_timeout)
+            if state == 'RESULTS_SCREEN':
                 self.log('Result screen is still visible after double tap')
                 continue
-
-            if self._is_arena_list_visible():
+            if state == 'ARENA_LIST':
                 self.log('Back on arena list')
                 return True
-
-            self.log('Result screen closed, waiting for arena list')
-            for _ in range(6):
-                sleep(0.5)
-                if self._is_arena_list_visible():
-                    self.log('Back on arena list')
-                    return True
-                if is_results_screen_visible():
-                    self.log('Result screen appeared again')
-                    break
+            if state == 'RESULT_CLOSED':
+                self.log('Result screen closed; no active Attack buttons are visible, continuing guarded scan')
+                return True
 
         current_screen = self.determine_current_screen(is_tag=False, x=self.button_locations[1][0], y=self.button_locations[1][1])
         self.log(f'Failed to close result screen, current screen detected as: {current_screen}')
+        try:
+            debug_save_screenshot(suffix_name=f'classic-result-close-failed-{current_screen.lower()}')
+            self.log('Saved failure screenshot to debug/screenshots')
+        except Exception as error:
+            self.log(f'Could not save failure screenshot: {error}')
+        return False
+
+    def _recover_to_arena_list(self):
+        """
+        Последняя попытка вернуться к списку арены: закрыть все попапы,
+        затем аккуратно нажать ESC с проверкой после каждого шага.
+        """
+        self.log('Recovery: closing popups and trying to return to arena list')
+        close_popup_recursive()
+        if self._is_arena_list_visible():
+            self.log('Recovery: back at arena list')
+            return True
+
+        for _ in range(2):
+            pyautogui.press('escape')
+            sleep(2)
+            close_popup()
+            if self._is_arena_list_visible():
+                self.log('Recovery: back at arena list')
+                return True
+
+        self.log('Recovery: could not return to arena list')
         return False
 
     def obtain(self):
@@ -970,6 +1032,12 @@ class ArenaFactory(Location):
                     self.log(f'Defeat at position {i}, next pass will start from offset {self.classic_defeat_offset}')
 
                 if not self._close_classic_result_screen():
+                    if self._recover_to_arena_list():
+                        self.log('Recovered to arena list after failed result close, continuing')
+                        sleep(1)
+                        continue
+                    screen = self.determine_current_screen(is_tag=False, x=self.button_locations[1][0], y=self.button_locations[1][1])
+                    self.abort_reason = f'could not return to arena list after battle result (screen: {screen})'
                     self.log('Could not return to arena list after result, stopping Arena Classic')
                     self.terminated = True
                     break
