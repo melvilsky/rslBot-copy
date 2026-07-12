@@ -50,6 +50,7 @@ _classic_data = load_coordinates('arena_classic.json', required=True)
 
 # Общие координаты ArenaFactory (из arena_shared.json)
 button_refresh = get_coordinate(_shared, 'button_refresh', source='coordinates/arena_shared.json')
+button_refresh_mistake = get_mistake(_shared, 'button_refresh', 45)
 refill_free = get_coordinate(_shared, 'refill_free', source='coordinates/arena_shared.json')
 refill_paid = get_coordinate(_shared, 'refill_paid', source='coordinates/arena_shared.json')
 refill_ruby = get_coordinate(_shared, 'refill_ruby', source='coordinates/arena_shared.json')
@@ -231,8 +232,9 @@ def callback_refresh(*args):
     sleep(2)
 
 
-# Таймаут ожидания кнопки Refresh (сек); при превышении — выход без бесконечного ожидания (15 мин)
-ARENA_REFRESH_WAIT_LIMIT = 900
+# Таймаут ожидания кнопки Refresh (сек). Не блокируем весь preset на 15 минут,
+# если экран Arena изменился или пиксель кнопки временно не распознаётся.
+ARENA_REFRESH_WAIT_LIMIT = 60
 # Таймаут ожидания TAP TO CONTINUE / RETURN TO ARENA в Arena Tag (сек)
 ARENA_TAG_AWAIT_LIMIT = 180
 
@@ -240,7 +242,7 @@ ARENA_TAG_AWAIT_LIMIT = 180
 class ArenaFactory(Location):
     E_BUTTON_REFRESH = {
         "name": "Refresh button",
-        "expect": lambda: pixel_check_new(button_refresh, mistake=5),
+        "expect": lambda: pixel_check_new(button_refresh, mistake=button_refresh_mistake),
         "callback": callback_refresh,
         "interval": 5,
     }
@@ -560,10 +562,12 @@ class ArenaFactory(Location):
         # The refresh-button colour also occurs in the blue result panels.
         # A loose tolerance therefore produces false ARENA_LIST detections
         # immediately after BattleEnd. Keep this fallback for a fully used
-        # opponent list, but use the strict tolerance from E_BUTTON_REFRESH.
+        # opponent list. A tolerance of 45 accepts the real Refresh button
+        # from the supplied Arena-list screenshot, while the victory panels
+        # differ by more than that.
         if pixel_check_new(
             button_refresh,
-            mistake=5,
+            mistake=button_refresh_mistake,
             label="list_refresh_button",
         ):
             self._last_arena_list_signal = 'REFRESH_BUTTON'
@@ -586,13 +590,6 @@ class ArenaFactory(Location):
                 list_signal = getattr(self, '_last_arena_list_signal', 'UNKNOWN_SIGNAL')
                 self.log(f'Post-result state: ARENA_LIST ({list_signal})')
                 return 'ARENA_LIST'
-
-            # Do not repeatedly click arbitrary screen areas during a loading
-            # transition. Only close a popup when its close button is detected.
-            if check % 4 == 0:
-                closed = close_popup()
-                if closed[0] is not None or closed[1]:
-                    self.log('Popup detected while returning from battle result')
 
             sleep(interval)
 
@@ -646,7 +643,7 @@ class ArenaFactory(Location):
             continue_actual = list(pyautogui.pixel(result_tap_to_continue[0], result_tap_to_continue[1]))
             self.log(
                 f'Result-close diagnostic RGB: refresh expected={button_refresh[2]} actual={refresh_actual} '
-                f'mistake=5; continue expected={result_tap_to_continue[2]} actual={continue_actual} '
+                f'mistake={button_refresh_mistake}; continue expected={result_tap_to_continue[2]} actual={continue_actual} '
                 f'mistake={result_tap_to_continue_mistake}'
             )
             debug_save_screenshot(suffix_name=f'classic-result-close-failed-{current_screen.lower()}')
@@ -949,6 +946,11 @@ class ArenaFactory(Location):
             position = el['position']
             target_swipes = el['swipes']
 
+            if swipes_done < target_swipes:
+                self.log(
+                    f'Scrolling to next Classic Arena opponent '
+                    f'(i={i}, swipes={swipes_done}->{target_swipes})'
+                )
             while swipes_done < target_swipes:
                 swipe_new('bottom', _sa['x'], _sa['y'], self.item_height, speed=.5)
                 swipes_done += 1
