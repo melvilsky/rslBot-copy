@@ -1,3 +1,5 @@
+from enum import Enum
+
 from classes.EventDispatcher import EventDispatcher
 from classes.Duration import Duration
 from classes.Foundation import Foundation
@@ -10,6 +12,21 @@ LOCATIONS_WITH_STORAGE = [
     'Arena Tag',
     'Arena Live',
 ]
+
+
+class RunOutcome(Enum):
+    """Структурированный итог выполнения локации (см. план Этап 6)."""
+    COMPLETED_RESOURCES_EXHAUSTED = 'COMPLETED_RESOURCES_EXHAUSTED'
+    COMPLETED_POLICY_LIMIT = 'COMPLETED_POLICY_LIMIT'
+    DEFERRED_REFRESH_COOLDOWN = 'DEFERRED_REFRESH_COOLDOWN'
+    PARTIAL_LIST_EXHAUSTED = 'PARTIAL_LIST_EXHAUSTED'
+    ABORTED_NAVIGATION = 'ABORTED_NAVIGATION'
+    ABORTED_UNKNOWN_SCREEN = 'ABORTED_UNKNOWN_SCREEN'
+    REFILL_FAILED = 'REFILL_FAILED'
+    REFILL_UNCERTAIN = 'REFILL_UNCERTAIN'
+    TERMINATED_BY_USER = 'TERMINATED_BY_USER'
+    # Legacy-итог: используется, пока локация не сообщила ничего более точного.
+    DONE = 'DONE'
 
 
 class Location(Foundation):
@@ -30,6 +47,7 @@ class Location(Foundation):
         self.run_counter = 0
         self.results = None
         self.refill = 0
+        self.run_outcome = RunOutcome.DONE
 
         self.E_TERMINATE = {
             "name": "Terminate",
@@ -108,13 +126,22 @@ class Location(Foundation):
         self.app.prepare(calibrate=False)
         self.event_dispatcher.publish('enter')
 
-    def finish(self):
+    def finish(self, outcome=None):
         close_popup_recursive()
         self.duration.end()
+
+        if outcome is None:
+            outcome = self.run_outcome or RunOutcome.DONE
+
         if self.abort_reason:
-            message_done = f"Aborted: {self.NAME} | {self.abort_reason} | Duration: {self.duration.get_last()}"
-        else:
+            message_done = (
+                f"Aborted: {self.NAME} | {self.abort_reason}"
+                f" | Outcome: {outcome.name} | Duration: {self.duration.get_last()}"
+            )
+        elif outcome is RunOutcome.DONE:
             message_done = f"Done: {self.NAME} | Duration: {self.duration.get_last()}"
+        else:
+            message_done = f"{outcome.name}: {self.NAME} | Duration: {self.duration.get_last()}"
 
         self.log(message_done)
         self.event_dispatcher.publish('finish')
@@ -150,6 +177,7 @@ class Location(Foundation):
         self.context = ctx
         self.terminated = False
         self.abort_reason = None
+        self.run_outcome = RunOutcome.DONE
         self.break_loops = False
         self.run_counter += 1
         self.duration.start()

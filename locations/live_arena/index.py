@@ -33,7 +33,7 @@ from helpers.vision import (
 )
 from helpers.coordinates import get_coordinate, get_mistake, load_coordinates
 from helpers.time_mgr import TimeMgr
-from helpers.refill_state import get_remaining_refills, increment_purchase
+from helpers.refill_state import RefillStateError, get_remaining_refills, increment_purchase
 from locations.hero_filter.index import HeroFilter
 from classes.Location import Location
 
@@ -512,12 +512,20 @@ class ArenaLive(Location):
         if ruby_button is not None:
             self.log('Free coins are NOT available')
             if self.refill > 0:
-                # wait and click on refill_paid
-                click(refill_paid[0], refill_paid[1], smart=True)
                 location_key = self.NAME.lower().replace(' ', '_')
                 profile = getattr(self.app, 'current_player_name', None)
-                increment_purchase(location_key, self.refill_max_allowed, profile_name=profile)
+                # Fail-closed: сначала фиксируем покупку в учёте, и только
+                # затем кликаем. Если учёт недоступен, платный клик запрещён.
+                try:
+                    increment_purchase(location_key, self.refill_max_allowed, profile_name=profile)
+                except RefillStateError as error:
+                    self.log(f'Paid refill blocked: {error}')
+                    self.abort_reason = f'paid refill accounting failed: {error}'
+                    self.terminate()
+                    return self.terminated
                 self.refill -= 1
+                # wait and click on refill_paid
+                click(refill_paid[0], refill_paid[1], smart=True)
                 self._click_on_find_opponent()
             else:
                 self.log('No more refill')

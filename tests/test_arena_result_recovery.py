@@ -21,6 +21,7 @@ module(
     is_debug_mode=lambda: False,
     prepare_event=lambda event, props: dict(event, **props),
     sleep=MagicMock(),
+    folder_ensure=MagicMock()
 )
 module('helpers.popups', close_popup=MagicMock(return_value=[None, False]), close_popup_recursive=MagicMock())
 module(
@@ -84,7 +85,22 @@ module(
     parse_point=lambda data, key: [data[key]['x'], data[key]['y']],
     require_coordinate_files=lambda *args: None,
 )
-module('helpers.refill_state', get_remaining_refills=MagicMock(), increment_purchase=MagicMock())
+module(
+    'helpers.refill_state',
+    get_purchased_count=MagicMock(return_value=0),
+    get_remaining_refills=MagicMock(),
+    increment_purchase=MagicMock(),
+    begin_refill_attempt=MagicMock(),
+    resolve_refill_attempt=MagicMock(),
+    has_unresolved_attempt=MagicMock(return_value=False),
+    RefillStateError=type('RefillStateError', (Exception,), {}),
+    ATTEMPT_PENDING='pending',
+    ATTEMPT_CONFIRMED='confirmed',
+    ATTEMPT_FAILED='failed',
+    ATTEMPT_UNCERTAIN='uncertain',
+    KIND_FREE='free',
+    KIND_PAID='paid',
+)
 
 location_module = module('classes.Location')
 
@@ -93,7 +109,25 @@ class Location:
     E_BATTLE_END = {}
 
 
+class RunOutcome:
+    class _Value:
+        def __init__(self, name):
+            self.name = name
+
+    COMPLETED_RESOURCES_EXHAUSTED = _Value('COMPLETED_RESOURCES_EXHAUSTED')
+    COMPLETED_POLICY_LIMIT = _Value('COMPLETED_POLICY_LIMIT')
+    DEFERRED_REFRESH_COOLDOWN = _Value('DEFERRED_REFRESH_COOLDOWN')
+    PARTIAL_LIST_EXHAUSTED = _Value('PARTIAL_LIST_EXHAUSTED')
+    ABORTED_NAVIGATION = _Value('ABORTED_NAVIGATION')
+    ABORTED_UNKNOWN_SCREEN = _Value('ABORTED_UNKNOWN_SCREEN')
+    REFILL_FAILED = _Value('REFILL_FAILED')
+    REFILL_UNCERTAIN = _Value('REFILL_UNCERTAIN')
+    TERMINATED_BY_USER = _Value('TERMINATED_BY_USER')
+    DONE = _Value('DONE')
+
+
 location_module.Location = Location
+location_module.RunOutcome = RunOutcome
 
 from locations.arena.index import ArenaFactory, get_results_screen_signal, result_tap_to_continue
 
@@ -107,19 +141,34 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         return arena
 
     @patch('locations.arena.index.pixel_check_new', return_value=True)
-    def test_arena_list_can_be_confirmed_by_refresh_button(self, pixel_check):
+    def test_arena_list_can_be_confirmed_by_page_shell(self, pixel_check):
+        # Оболочка страницы (вкладка Battle + левая панель) — основной
+        # признак списка: он работает и без Attack/free Refresh.
         arena = ArenaFactory.__new__(ArenaFactory)
         arena.button_locations = {}
 
         self.assertTrue(arena._is_arena_list_visible())
-        pixel_check.assert_called_once()
-        self.assertEqual(pixel_check.call_args.args[0][0:2], [817, 133])
-        self.assertEqual(pixel_check.call_args.kwargs['mistake'], 5)
-        self.assertEqual(arena._last_arena_list_signal, 'REFRESH_BUTTON')
+        self.assertEqual(arena._last_arena_list_signal, 'LIST_SHELL')
 
-    @patch('locations.arena.index.close_popup', return_value=[None, False])
+    @patch('locations.arena.index.pixel_check_new')
+    def test_arena_list_falls_back_to_refresh_button(self, pixel_check):
+        # Если оболочка не подтверждена, список ещё может быть подтверждён
+        # по синей кнопке Refresh с tolerance 45.
+        def only_refresh_matches(point, mistake=10, label=None):
+            return point[0:2] == [817, 133]
+
+        pixel_check.side_effect = only_refresh_matches
+        arena = ArenaFactory.__new__(ArenaFactory)
+        arena.button_locations = {}
+
+        self.assertTrue(arena._is_arena_list_visible())
+        self.assertEqual(arena._last_arena_list_signal, 'REFRESH_BUTTON')
+        last_call = pixel_check.call_args
+        self.assertEqual(last_call[0][0][0:2], [817, 133])
+        self.assertEqual(last_call[1]['mistake'], 45)
+
     @patch('locations.arena.index.get_results_screen_signal', return_value='VICTORY')
-    def test_result_screen_has_priority_over_false_arena_list_match(self, _results_visible, _close_popup):
+    def test_result_screen_has_priority_over_false_arena_list_match(self, _results_visible):
         arena = self.make_arena()
         arena._is_arena_list_visible.return_value = True
 
@@ -128,9 +177,8 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         self.assertEqual(state, 'RESULTS_SCREEN')
         arena._is_arena_list_visible.assert_not_called()
 
-    @patch('locations.arena.index.close_popup', return_value=[None, False])
     @patch('locations.arena.index.get_results_screen_signal', return_value=None)
-    def test_wait_timeout_remains_unknown_without_positive_signal(self, _results_visible, _close_popup):
+    def test_wait_timeout_remains_unknown_without_positive_signal(self, _results_visible):
         arena = self.make_arena()
 
         state = arena._wait_for_classic_post_result_state(timeout=1, interval=0.5)

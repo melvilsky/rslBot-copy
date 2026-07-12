@@ -6,7 +6,7 @@ from helpers.common import (
     prepare_event,
     sleep,
 )
-from helpers.popups import close_popup, close_popup_recursive
+from helpers.popups import close_popup_recursive
 from helpers.game_actions import (
     calculate_win_rate,
     click_on_progress_info,
@@ -31,8 +31,10 @@ from helpers.coordinates import (
     parse_point,
     require_coordinate_files,
 )
-from helpers.refill_state import get_remaining_refills, increment_purchase
-from classes.Location import Location
+from helpers.refill_state import get_purchased_count, get_remaining_refills
+from classes.Location import Location, RunOutcome
+from locations.arena.refill_service import RefillKind, RefillOutcome, RefillService
+from locations.arena.screen_state import ARENA_LIST_SHELL, REFRESH_COOLDOWN_SIGNATURE
 
 # ============================================================================
 # КООРДИНАТЫ ХРАНЯТСЯ В:
@@ -235,6 +237,10 @@ def callback_refresh(*args):
 # Таймаут ожидания кнопки Refresh (сек). Не блокируем весь preset на 15 минут,
 # если экран Arena изменился или пиксель кнопки временно не распознаётся.
 ARENA_REFRESH_WAIT_LIMIT = 60
+# Длинное ожидание допустимо ТОЛЬКО после положительного распознавания
+# зелёного индикатора "Free refresh in ..." (REFRESH_COOLDOWN). Игровой
+# cooldown может достигать 15 минут.
+ARENA_REFRESH_COOLDOWN_WAIT_LIMIT = 960
 # Таймаут ожидания TAP TO CONTINUE / RETURN TO ARENA в Arena Tag (сек)
 ARENA_TAG_AWAIT_LIMIT = 180
 
@@ -249,6 +255,13 @@ class ArenaFactory(Location):
     E_REFRESH_TIMEOUT = {
         "name": "RefreshTimeout",
         "delay": ARENA_REFRESH_WAIT_LIMIT,
+        "interval": 1,
+        "expect": lambda: True,
+        "blocking": True,
+    }
+    E_REFRESH_COOLDOWN_TIMEOUT = {
+        "name": "RefreshCooldownTimeout",
+        "delay": ARENA_REFRESH_COOLDOWN_WAIT_LIMIT,
         "interval": 1,
         "expect": lambda: True,
         "blocking": True,
@@ -335,6 +348,10 @@ class ArenaFactory(Location):
             str_wr = f"(WR: {calculate_win_rate(wins, losses)})"
             res_list.append(f"{str_battles} {str_wr}")
 
+        if self.refill_max_allowed > 0:
+            purchased = get_purchased_count(location_key, profile_name=profile)
+            res_list.append(f"Paid refills today (UTC): {purchased}/{self.refill_max_allowed}")
+
         return res_list
 
     def _persist_results(self, results_local):
@@ -362,9 +379,14 @@ class ArenaFactory(Location):
             self._apply_props(props=props)
 
         if self.initial_refresh:
-            self._refresh_arena()
-            # @TODO Test
-            sleep(1)
+            # Best-effort policy (план, Этап 3): если на текущем списке ещё
+            # есть доступные соперники, недоступный free refresh не должен
+            # блокировать атаку.
+            if self._has_attackable_targets():
+                self.log('Initial refresh skipped: current list still has available opponents')
+            else:
+                self._refresh_arena()
+                sleep(1)
 
         is_tag = (self.name == 'Arena Tag')
 
@@ -430,7 +452,7 @@ class ArenaFactory(Location):
             if 'battle_time_limit' in props:
                 self.battle_time_limit = int(props['battle_time_limit'])
 
-    def _refresh_arena(self):
+    def ensure_tokens(self) -> bool:
         _coins, _region = self.read_coins_predicate()
         if _coins == 0:
             _x = _region[0] - 5
@@ -439,18 +461,81 @@ class ArenaFactory(Location):
             refilled = self._refill()
 
             if self.terminated:
-                return
+                return False
 
             if refilled:
                 sleep(2)
                 click(_x, _y)
                 sleep(1)
+                return True
+            return False
+        return True
 
+    def _has_attackable_targets(self):
+        for position, pos in self.button_locations.items():
+            if pixel_check_new([pos[0], pos[1], ATTACK_BUTTON_RGB], mistake=10, label=f"attackable_{position}"):
+                return True
+        return False
+
+    def _is_arena_list_shell_visible(self):
+        """Устойчивая оболочка страницы арены (вкладка Battle + левая панель).
+        Присутствует и на исчерпанном списке, когда нет ни Attack, ни синей
+        кнопки Refresh (кейс 15-54-44)."""
+        matched = 0
+        for index, point in enumerate(ARENA_LIST_SHELL['points']):
+            if pixel_check_new(point, mistake=ARENA_LIST_SHELL['mistake'], label=f"list_shell_{index + 1}"):
+                matched += 1
+        if is_debug_mode():
+            log(f"Arena list shell score: {matched}/{len(ARENA_LIST_SHELL['points'])} (need {ARENA_LIST_SHELL['min_score']})")
+        return matched >= ARENA_LIST_SHELL['min_score']
+
+    def _is_refresh_cooldown_visible(self):
+        """Зелёный индикатор 'Free refresh in Xm Ys' рядом с кнопкой Refresh."""
+        matched = 0
+        for index, point in enumerate(REFRESH_COOLDOWN_SIGNATURE['points']):
+            if pixel_check_new(point, mistake=REFRESH_COOLDOWN_SIGNATURE['mistake'], label=f"refresh_cooldown_{index + 1}"):
+                matched += 1
+        if is_debug_mode():
+            log(f"Refresh cooldown score: {matched}/{len(REFRESH_COOLDOWN_SIGNATURE['points'])} (need {REFRESH_COOLDOWN_SIGNATURE['min_score']})")
+        return matched >= REFRESH_COOLDOWN_SIGNATURE['min_score']
+
+    def refresh_opponent_list(self):
         response = self.awaits([self.E_BUTTON_REFRESH, self.E_TERMINATE, self.E_REFRESH_TIMEOUT])
         if response and response.get('name') == 'RefreshTimeout':
-            self.log(f'Refresh button wait timeout ({ARENA_REFRESH_WAIT_LIMIT}s), stopping')
-            self.terminated = True
-            return
+            # Длинное ожидание разрешено только после положительного
+            # подтверждения cooldown на распознанном списке арены
+            # (план, Этап 3): для UNKNOWN экранов оно запрещено.
+            if self._is_arena_list_shell_visible() and self._is_refresh_cooldown_visible():
+                self.log(
+                    f'Refresh cooldown confirmed, waiting for free refresh '
+                    f'up to {ARENA_REFRESH_COOLDOWN_WAIT_LIMIT}s'
+                )
+                response = self.awaits([
+                    self.E_BUTTON_REFRESH,
+                    self.E_TERMINATE,
+                    self.E_REFRESH_COOLDOWN_TIMEOUT,
+                ])
+                if response and response.get('name') == 'RefreshCooldownTimeout':
+                    self.log(
+                        f'Free refresh did not become available within '
+                        f'{ARENA_REFRESH_COOLDOWN_WAIT_LIMIT}s, deferring'
+                    )
+                    self.run_outcome = RunOutcome.DEFERRED_REFRESH_COOLDOWN
+                    self.terminated = True
+                    return False
+            else:
+                self.log(
+                    f'Refresh button wait timeout ({ARENA_REFRESH_WAIT_LIMIT}s) '
+                    f'without confirmed cooldown, stopping'
+                )
+                debug_save_screenshot(suffix_name='arena-refresh-timeout-unconfirmed')
+                self.abort_reason = 'refresh button not found and cooldown not confirmed'
+                self.run_outcome = RunOutcome.ABORTED_UNKNOWN_SCREEN
+                self.terminated = True
+                return False
+
+        if self.terminated:
+            return False
 
         if self.classic_defeat_offset > 0:
             self.log(f'Refresh: resetting defeat offset (was {self.classic_defeat_offset})')
@@ -462,65 +547,119 @@ class ArenaFactory(Location):
             for index in range(2):
                 swipe_new(_sr['direction'], _sr['x'], _sr['y'], _sr['distance'], speed=.2, instant_move=True)
             sleep(1)
+        return True
+
+    def _refresh_arena(self):
+        """Legacy method for backward compatibility. Use ensure_tokens and refresh_opponent_list instead."""
+        if not self.ensure_tokens():
+            return
+        self.refresh_opponent_list()
+
+    def _is_ruby_refill_visible(self):
+        is_tag = self.name == 'Arena Tag'
+        points = REFILL_RUBY_TAG_POINTS if is_tag else REFILL_RUBY_POINTS
+        mistake = REFILL_RUBY_TAG_MISTAKE if is_tag else REFILL_RUBY_MISTAKE
+        min_score = REFILL_RUBY_TAG_MIN_SCORE if is_tag else REFILL_RUBY_MIN_SCORE
+
+        if points:
+            matched = 0
+            for index, point in enumerate(points):
+                if pixel_check_new(point, mistake=mistake, label=f"refill_ruby_points_{'tag_' if is_tag else ''}{index + 1}"):
+                    matched += 1
+            if matched >= min_score:
+                return True
+
+        # Фоллбэк на старую логику, если точки не сработали
+        ruby_mistake = get_mistake(_shared, 'refill_ruby', 40)
+        if pixel_check_new(refill_ruby, mistake=ruby_mistake, label="refill_ruby_visible"):
+            return True
+        return find_needle_refill_ruby() is not None
+
+    def _is_free_refill_button_visible(self):
+        _rf_mistake = get_mistake(_shared, 'refill_free', 15)
+        return pixel_check_new(refill_free, mistake=_rf_mistake, label="refill_free_visible")
+
+    def _classify_refill_popup(self):
+        """Положительная тройная классификация popup (план, Этап 4):
+        рубин подтверждён -> PAID; жёлтая кнопка без рубина -> FREE;
+        ни один вариант не подтверждён -> UNKNOWN (кликать запрещено)."""
+        if self._is_ruby_refill_visible():
+            return RefillKind.PAID
+        if self._is_free_refill_button_visible():
+            return RefillKind.FREE
+        return RefillKind.UNKNOWN
+
+    def _read_token_balance(self):
+        tokens, _region = self.read_coins_predicate()
+        return tokens
 
     def _refill(self):
-        refilled = False
-
-        def click_on_refill():
-            click(refill_click_coord[0], refill_click_coord[1])
-            sleep(0.5)
-
-        def is_ruby_refill_visible():
-            is_tag = self.name == 'Arena Tag'
-            points = REFILL_RUBY_TAG_POINTS if is_tag else REFILL_RUBY_POINTS
-            mistake = REFILL_RUBY_TAG_MISTAKE if is_tag else REFILL_RUBY_MISTAKE
-            min_score = REFILL_RUBY_TAG_MIN_SCORE if is_tag else REFILL_RUBY_MIN_SCORE
-
-            if points:
-                matched = 0
-                for index, point in enumerate(points):
-                    if pixel_check_new(point, mistake=mistake, label=f"refill_ruby_points_{'tag_' if is_tag else ''}{index + 1}"):
-                        matched += 1
-                if matched >= min_score:
-                    return True
-            
-            # Фоллбэк на старую логику, если точки не сработали
-            ruby_mistake = get_mistake(_shared, 'refill_ruby', 40)
-            if pixel_check_new(refill_ruby, mistake=ruby_mistake, label="refill_ruby_visible"):
-                return True
-            return find_needle_refill_ruby() is not None
+        is_tag = self.name == 'Arena Tag'
 
         # ВАЖНО: Ждем анимацию появления попапа до 3 секунд
         waited_popup = 0
-        while not is_refill_popup_visible(self.name == 'Arena Tag') and waited_popup < 3:
+        while not is_refill_popup_visible(is_tag) and waited_popup < 3:
             sleep(0.5)
             waited_popup += 0.5
 
-        if not is_refill_popup_visible(self.name == 'Arena Tag'):
+        if not is_refill_popup_visible(is_tag):
             return False
 
         sleep(1)
 
-        if is_ruby_refill_visible():
-            self.log('Free coins are NOT available (ruby detected)')
-            if self.refill > 0:
-                location_key = self.NAME.lower().replace(' ', '_')
-                profile = getattr(self.app, 'current_player_name', None)
-                increment_purchase(location_key, self.refill_max_allowed, profile_name=profile)
-                self.refill -= 1
-                click_on_refill()
-                refilled = True
+        location_key = self.NAME.lower().replace(' ', '_')
+        profile = getattr(self.app, 'current_player_name', None)
+
+        service = RefillService(
+            location_key=location_key,
+            profile_name=profile,
+            max_allowed=self.refill_max_allowed,
+            classify_popup=self._classify_refill_popup,
+            is_popup_visible=lambda: is_refill_popup_visible(is_tag),
+            click_refill=lambda: click(refill_click_coord[0], refill_click_coord[1]),
+            read_tokens=self._read_token_balance,
+            wait=sleep,
+            logger=self.log,
+        )
+        result = service.execute()
+
+        if result.outcome is RefillOutcome.SUCCESS:
+            if result.kind is RefillKind.PAID:
+                self.refill = max(0, self.refill - 1)
+                self.log(
+                    f'Paid refill confirmed (tokens {result.tokens_before}->{result.tokens_after}), '
+                    f'{self.refill} paid refills remaining'
+                )
             else:
-                self.log('No more refill')
-                self.terminated = True
-        else:
-            self.log('Free coins are available (no ruby detected)')
-            click_on_refill()
-            refilled = True
+                self.log('Free refill confirmed')
+            sleep(0.5)
+            return True
 
-        sleep(0.5)
+        if result.outcome is RefillOutcome.LIMIT_REACHED:
+            self.log('No more refill')
+            self.run_outcome = RunOutcome.COMPLETED_POLICY_LIMIT
+            self.terminated = True
+            return False
 
-        return refilled
+        if result.outcome is RefillOutcome.UNKNOWN_POPUP:
+            debug_save_screenshot(suffix_name='refill-popup-unknown')
+            self.abort_reason = 'refill popup could not be classified as FREE or PAID'
+            self.run_outcome = RunOutcome.ABORTED_UNKNOWN_SCREEN
+            self.terminated = True
+            return False
+
+        if result.outcome is RefillOutcome.FAILED:
+            self.abort_reason = f'refill failed: {result.reason}'
+            self.run_outcome = RunOutcome.REFILL_FAILED
+            self.terminated = True
+            return False
+
+        # UNCERTAIN / BLOCKED_PENDING / STATE_ERROR: повторный автоматический
+        # платный клик запрещён до reconciliation (план, Этап 4, шаг 10).
+        self.abort_reason = f'refill outcome {result.outcome.name}: {result.reason}'
+        self.run_outcome = RunOutcome.REFILL_UNCERTAIN
+        self.terminated = True
+        return False
 
     def _get_last_results(self):
         length = len(self.results)
@@ -539,7 +678,7 @@ class ArenaFactory(Location):
         if is_team_setup_visible():
             return 'TEAM_SETUP'
             
-        if pixel_check_new([x, y, ATTACK_BUTTON_RGB], label="det_list"):
+        if pixel_check_new([x, y, ATTACK_BUTTON_RGB], label="det_list") or self._is_arena_list_visible():
             return 'ARENA_LIST'
             
         if is_tag:
@@ -558,6 +697,14 @@ class ArenaFactory(Location):
             if pixel_check_new([pos[0], pos[1], ATTACK_BUTTON_RGB], mistake=mistake, label=f"list_button_{position}"):
                 self._last_arena_list_signal = f'ATTACK_BUTTON_{position}'
                 return True
+
+        # Основной признак списка — устойчивая оболочка страницы (вкладка
+        # Battle + левая панель). Она присутствует и на исчерпанном списке
+        # с cooldown, когда нет ни Attack, ни синей кнопки Refresh, поэтому
+        # такой экран больше не превращается в UNKNOWN (план, Этап 2).
+        if self._is_arena_list_shell_visible():
+            self._last_arena_list_signal = 'LIST_SHELL'
+            return True
 
         # The refresh-button colour also occurs in the blue result panels.
         # A loose tolerance therefore produces false ARENA_LIST detections
@@ -654,24 +801,25 @@ class ArenaFactory(Location):
 
     def _recover_to_arena_list(self):
         """
-        Последняя попытка вернуться к списку арены: закрыть все попапы,
-        затем аккуратно нажать ESC с проверкой после каждого шага.
+        Последняя попытка вернуться к списку арены: закрыть положительно
+        распознанные попапы и повторно наблюдать экран.
+
+        Слепой Escape запрещён (план, Этап 2): именно он в кейсе 15-54-44
+        увёл бота с уже корректного списка арены. UNKNOWN даёт право только
+        на безопасное наблюдение и диагностику.
         """
-        self.log('Recovery: closing popups and trying to return to arena list')
+        self.log('Recovery: closing popups and re-checking arena list')
         close_popup_recursive()
-        if self._is_arena_list_visible():
-            self.log('Recovery: back at arena list')
-            return True
 
-        for _ in range(2):
-            pyautogui.press('escape')
-            sleep(2)
-            close_popup()
+        for _ in range(3):
             if self._is_arena_list_visible():
-                self.log('Recovery: back at arena list')
+                list_signal = getattr(self, '_last_arena_list_signal', 'UNKNOWN_SIGNAL')
+                self.log(f'Recovery: back at arena list ({list_signal})')
                 return True
+            sleep(2)
 
-        self.log('Recovery: could not return to arena list')
+        debug_save_screenshot(suffix_name='arena-recovery-unknown')
+        self.log('Recovery: arena list not confirmed; blind Escape is not allowed, stopping')
         return False
 
     def obtain(self):
@@ -719,15 +867,15 @@ class ArenaFactory(Location):
         click(self.return_to_arena_coord[0], self.return_to_arena_coord[1])
         sleep(2)
 
+        # Слепой Escape запрещён (план, Этап 2): только повторное наблюдение
+        # с положительным подтверждением списка.
         for _ in range(3):
-            pyautogui.press('escape')
-            sleep(1)
+            if self._is_arena_list_visible():
+                self.log('Recovery: back at arena list')
+                return True
+            sleep(2)
 
-        pos = self.button_locations[1]
-        if pixel_check_new([pos[0], pos[1], ATTACK_BUTTON_RGB], mistake=10, label="recovery_list_check"):
-            self.log('Recovery: back at arena list')
-            return True
-
+        debug_save_screenshot(suffix_name='tag-recovery-unknown')
         self.log('Recovery: could not return to arena list')
         return False
 
@@ -870,10 +1018,14 @@ class ArenaFactory(Location):
                 elif current_screen in ['RESULTS_SCREEN', 'ACTIVE_BATTLE', 'RETURN_TO_ARENA']:
                     self.log('Fallback: We actually progressed to battle/results. Continuing flow.')
                 else:
-                    self.log('Fallback: Unknown state. Attempting recovery with Escape.')
-                    pyautogui.press('escape')
-                    sleep(2)
-                    continue
+                    # UNKNOWN не даёт права на Escape (план, Этап 2): только
+                    # диагностика и явная ошибка.
+                    self.log('Fallback: Unknown state. Saving diagnostics and stopping without blind Escape.')
+                    debug_save_screenshot(suffix_name='tag-battle-start-unknown')
+                    self.abort_reason = 'unknown screen after battle start'
+                    self.run_outcome = RunOutcome.ABORTED_UNKNOWN_SCREEN
+                    self.terminated = True
+                    break
 
             # TAP TO CONTINUE
             _ttc_mistake = get_mistake(_tag_data, 'tap_to_continue', 35)
@@ -1067,10 +1219,14 @@ class ArenaFactory(Location):
                     elif current_screen in ['RESULTS_SCREEN', 'ACTIVE_BATTLE']:
                         self.log('Fallback: We actually progressed to battle/results. Continuing flow.')
                     else:
-                        self.log('Fallback: Unknown state. Attempting recovery with Escape.')
-                        pyautogui.press('escape')
-                        sleep(2)
-                        continue
+                        # UNKNOWN не даёт права на Escape (план, Этап 2): только
+                        # диагностика и явная ошибка.
+                        self.log('Fallback: Unknown state. Saving diagnostics and stopping without blind Escape.')
+                        debug_save_screenshot(suffix_name='classic-battle-start-unknown')
+                        self.abort_reason = 'unknown screen after battle start'
+                        self.run_outcome = RunOutcome.ABORTED_UNKNOWN_SCREEN
+                        self.terminated = True
+                        break
 
                 self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
                 if is_debug_mode():
@@ -1091,6 +1247,7 @@ class ArenaFactory(Location):
                         continue
                     screen = self.determine_current_screen(is_tag=False, x=self.button_locations[1][0], y=self.button_locations[1][1])
                     self.abort_reason = f'could not return to arena list after battle result (screen: {screen})'
+                    self.run_outcome = RunOutcome.ABORTED_NAVIGATION
                     self.log('Could not return to arena list after result, stopping Arena Classic')
                     self.terminated = True
                     break

@@ -108,6 +108,12 @@ jobs:
         Write-Host "Set TESSERACT_PATH to: $tesseractPath"
       shell: powershell
     
+    # Release build must not start when tests fail (fix plan, stage 1)
+    - name: Run unit tests
+      run: |
+        python -m unittest discover -s tests -p "test_*.py" -v
+      continue-on-error: false
+    
     # Bump version before build so dist and zip contain correct version
     - name: Auto-increment version
       id: get_version
