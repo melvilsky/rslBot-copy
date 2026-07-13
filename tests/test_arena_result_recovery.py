@@ -206,7 +206,8 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         closed = arena._close_classic_result_screen(max_attempts=2, settle_timeout=0.5)
 
         self.assertFalse(closed)
-        self.assertEqual(tap.call_count, 2)
+        # 2 primary attempts + 3 grace taps
+        self.assertEqual(tap.call_count, 5)
 
     @patch('locations.arena.index.tap_to_continue')
     @patch('locations.arena.index.get_results_screen_signal')
@@ -247,6 +248,20 @@ class ArenaResultRecoveryTests(unittest.TestCase):
 
         self.assertTrue(closed)
         self.assertEqual(tap.call_count, 2)
+
+    @patch('locations.arena.index.tap_to_continue')
+    @patch('locations.arena.index.get_results_screen_signal')
+    def test_grace_taps_close_remaining_result_screen(self, results_visible, tap):
+        arena = self.make_arena()
+        results_visible.side_effect = ['DEFEAT', 'TAP_TO_CONTINUE', 'TAP_TO_CONTINUE', None]
+        arena._wait_for_classic_post_result_state = MagicMock(
+            side_effect=['UNKNOWN', 'RESULTS_SCREEN', 'ARENA_LIST']
+        )
+
+        closed = arena._close_classic_result_screen(max_attempts=2, settle_timeout=0.5)
+
+        self.assertTrue(closed)
+        self.assertGreaterEqual(tap.call_count, 3)
 
 
 if __name__ == '__main__':

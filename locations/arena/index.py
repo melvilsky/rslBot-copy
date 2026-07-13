@@ -753,7 +753,7 @@ class ArenaFactory(Location):
         self.log(f'Post-result state: UNKNOWN after {timeout}s')
         return 'UNKNOWN'
 
-    def _close_classic_result_screen(self, max_attempts=5, settle_timeout=10):
+    def _close_classic_result_screen(self, max_attempts=8, settle_timeout=15):
         """
         Close both Classic Arena result stages and require positive
         confirmation of the Arena list:
@@ -783,12 +783,37 @@ class ArenaFactory(Location):
             self.log(f'Continue tap sent (attempt {attempt}/{max_attempts})')
 
             state = self._wait_for_classic_post_result_state(timeout=settle_timeout)
-            if state == 'RESULTS_SCREEN':
-                continue
             if state == 'ARENA_LIST':
                 self.log('Back on arena list')
                 return True
+            if state == 'RESULTS_SCREEN':
+                continue
             self.log('Neither result screen nor arena list is confirmed; retrying continue tap')
+
+        # Primary attempts can end while a reward/summary screen is still open
+        # (log 13:53:52: TAP_TO_CONTINUE after attempt 5/5). Keep tapping until
+        # the list is confirmed or the grace budget is exhausted.
+        if not self._is_arena_list_visible():
+            self.log('Result screen still open after primary attempts, running grace taps')
+            for grace in range(1, 4):
+                if self._is_arena_list_visible():
+                    list_signal = getattr(self, '_last_arena_list_signal', 'UNKNOWN_SIGNAL')
+                    self.log(f'Back on arena list after grace tap ({list_signal})')
+                    return True
+
+                result_signal = get_results_screen_signal() or 'GRACE/UNSTABLE'
+                self.log(f'Grace result close {grace}/3: {result_signal}')
+                tap_to_continue(times=1, wait_before=1, wait_after=2)
+
+                state = self._wait_for_classic_post_result_state(timeout=settle_timeout)
+                if state == 'ARENA_LIST':
+                    self.log('Back on arena list after grace tap')
+                    return True
+
+        if self._is_arena_list_visible():
+            list_signal = getattr(self, '_last_arena_list_signal', 'UNKNOWN_SIGNAL')
+            self.log(f'Back on arena list ({list_signal})')
+            return True
 
         current_screen = self.determine_current_screen(is_tag=False, x=self.button_locations[1][0], y=self.button_locations[1][1])
         self.log(f'Failed to close result screen, current screen detected as: {current_screen}')
@@ -818,11 +843,18 @@ class ArenaFactory(Location):
         self.log('Recovery: closing popups and re-checking arena list')
         close_popup_recursive()
 
-        for _ in range(3):
+        for attempt in range(1, 7):
             if self._is_arena_list_visible():
                 list_signal = getattr(self, '_last_arena_list_signal', 'UNKNOWN_SIGNAL')
                 self.log(f'Recovery: back at arena list ({list_signal})')
                 return True
+
+            result_signal = get_results_screen_signal()
+            if result_signal:
+                self.log(f'Recovery: result screen still open ({result_signal}), tapping continue')
+                tap_to_continue(times=1, wait_before=1, wait_after=2)
+                continue
+
             sleep(2)
 
         debug_save_screenshot(suffix_name='arena-recovery-unknown')
