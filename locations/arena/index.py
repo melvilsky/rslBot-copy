@@ -398,7 +398,14 @@ class ArenaFactory(Location):
                 if self.terminated is False:
                     self._refresh_arena()
         else:
-            # Arena Classic: старая логика с отслеживанием прогресса
+            # Arena Classic: старая логика с отслеживанием прогресса.
+            # Смещение поражений из прошлого запуска устарело: список мог
+            # смениться, а форсированный refresh без жетонов завершает ран
+            # впустую даже при доступных соперниках (лог 02:51:14).
+            if self.classic_defeat_offset:
+                self.log(f'New run: resetting stale defeat offset (was {self.classic_defeat_offset})')
+                self.classic_defeat_offset = 0
+
             last_results_count = 0
             no_progress_iterations = 0
             MAX_NO_PROGRESS_ITERATIONS = 3
@@ -1122,7 +1129,10 @@ class ArenaFactory(Location):
             is_not_attacked = len(results_local) - 1 < (i - start_index)
             if is_debug_mode():
                 debug_save_screenshot(suffix_name=f"classic-before-attack-pos{position}-i{i}")
-            if pixel_check_new([x, y, ATTACK_BUTTON_RGB], label=f"attack_button_pos{position}") and is_not_attacked:
+            has_attack_button = pixel_check_new([x, y, ATTACK_BUTTON_RGB], label=f"attack_button_pos{position}")
+            if not has_attack_button:
+                self.log(f'Position {position} (i={i}, swipes={swipes_done}) — no attack button, skipping')
+            if has_attack_button and is_not_attacked:
                 self.log(self.name + ' | Attack')
                 click_on_battle()
 
@@ -1241,17 +1251,24 @@ class ArenaFactory(Location):
                     self.log(f'Defeat at position {i}, next pass will start from offset {self.classic_defeat_offset}')
 
                 if not self._close_classic_result_screen():
-                    if self._recover_to_arena_list():
-                        self.log('Recovered to arena list after failed result close, continuing')
-                        sleep(1)
-                        continue
-                    screen = self.determine_current_screen(is_tag=False, x=self.button_locations[1][0], y=self.button_locations[1][1])
-                    self.abort_reason = f'could not return to arena list after battle result (screen: {screen})'
-                    self.run_outcome = RunOutcome.ABORTED_NAVIGATION
-                    self.log('Could not return to arena list after result, stopping Arena Classic')
-                    self.terminated = True
-                    break
+                    if not self._recover_to_arena_list():
+                        screen = self.determine_current_screen(is_tag=False, x=self.button_locations[1][0], y=self.button_locations[1][1])
+                        self.abort_reason = f'could not return to arena list after battle result (screen: {screen})'
+                        self.run_outcome = RunOutcome.ABORTED_NAVIGATION
+                        self.log('Could not return to arena list after result, stopping Arena Classic')
+                        self.terminated = True
+                        break
+                    self.log('Recovered to arena list after failed result close, continuing')
 
+                # Игра сбрасывает список Classic Arena в начало после каждого
+                # боя, поэтому накопленный счётчик свайпов больше не
+                # соответствует экрану. После победы это приводило к молчаливым
+                # пропускам позиций (строка показывает "Victory" вместо
+                # Attack), после поражения — к повторной атаке того же
+                # соперника. Прокручиваем следующего противника заново от верха.
+                if swipes_done:
+                    self.log(f'Battle finished: list reset to top by the game, re-scrolling from 0 (was {swipes_done})')
+                swipes_done = 0
                 sleep(1)
 
         if len(results_local):
