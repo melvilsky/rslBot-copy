@@ -74,6 +74,12 @@ result_tap_to_continue = get_coordinate(
     source='coordinates/arena_shared.json',
 )
 result_tap_to_continue_mistake = get_mistake(_shared, 'result_tap_to_continue', 45)
+classic_return_to_arena = get_coordinate(
+    _shared,
+    'return_to_arena',
+    source='coordinates/arena_shared.json',
+)
+classic_return_to_arena_mistake = get_mistake(_shared, 'return_to_arena', 25)
 swipe_attack_coord = _shared['swipe_attack']
 swipe_refresh_coord = _shared['swipe_refresh']
 swipe_reward_coord = _shared['swipe_reward']
@@ -804,6 +810,39 @@ class ArenaFactory(Location):
         self.log(f'Post-result state: UNKNOWN after {timeout}s')
         return 'UNKNOWN'
 
+    def _get_classic_result_tap_target(self):
+        signal = get_results_screen_signal()
+        if signal == 'TAP_TO_CONTINUE':
+            return (
+                result_tap_to_continue[0],
+                result_tap_to_continue[1],
+                'TAP TO CONTINUE',
+            )
+
+        observation = self._observe_arena_screen()
+        if (
+            observation.state == ScreenState.RESULT_REWARD
+            or 'TAP_TO_CONTINUE' in observation.signals
+        ):
+            return (
+                result_tap_to_continue[0],
+                result_tap_to_continue[1],
+                'TAP TO CONTINUE',
+            )
+
+        return (
+            classic_return_to_arena[0],
+            classic_return_to_arena[1],
+            'RETURN TO ARENA',
+        )
+
+    def _tap_classic_result_continue(self):
+        sleep(1)
+        x, y, action = self._get_classic_result_tap_target()
+        self.log(f'Clicking {action} at ({x}, {y})')
+        click(x, y, smart=True)
+        sleep(2)
+
     def _close_classic_result_screen(self, max_attempts=8, settle_timeout=15):
         """
         Close both Classic Arena result stages and require positive
@@ -830,7 +869,7 @@ class ArenaFactory(Location):
 
             # One tap per attempt prevents a second click from landing on the
             # Arena list if the transition completes quickly.
-            tap_to_continue(times=1, wait_before=1, wait_after=2)
+            self._tap_classic_result_continue()
             self.log(f'Continue tap sent (attempt {attempt}/{max_attempts})')
 
             state = self._wait_for_classic_post_result_state(timeout=settle_timeout)
@@ -854,7 +893,7 @@ class ArenaFactory(Location):
 
                 result_signal = get_results_screen_signal() or 'GRACE/UNSTABLE'
                 self.log(f'Grace result close {grace}/3: {result_signal}')
-                tap_to_continue(times=1, wait_before=1, wait_after=2)
+                self._tap_classic_result_continue()
 
                 state = self._wait_for_classic_post_result_state(timeout=settle_timeout)
                 if state == 'ARENA_LIST':
@@ -903,7 +942,7 @@ class ArenaFactory(Location):
             result_signal = get_results_screen_signal()
             if result_signal:
                 self.log(f'Recovery: result screen still open ({result_signal}), tapping continue')
-                tap_to_continue(times=1, wait_before=1, wait_after=2)
+                self._tap_classic_result_continue()
                 continue
 
             sleep(2)

@@ -129,7 +129,13 @@ class RunOutcome:
 location_module.Location = Location
 location_module.RunOutcome = RunOutcome
 
-from locations.arena.index import ArenaFactory, get_results_screen_signal, result_tap_to_continue
+from locations.arena.index import (
+    ArenaFactory,
+    classic_return_to_arena,
+    get_results_screen_signal,
+    result_tap_to_continue,
+)
+from locations.arena.screen_state import ScreenObservation, ScreenState
 
 
 class ArenaResultRecoveryTests(unittest.TestCase):
@@ -196,7 +202,7 @@ class ArenaResultRecoveryTests(unittest.TestCase):
             label='result_tap_to_continue',
         )
 
-    @patch('locations.arena.index.tap_to_continue')
+    @patch('locations.arena.index.ArenaFactory._tap_classic_result_continue')
     @patch('locations.arena.index.get_results_screen_signal')
     def test_result_close_requires_positive_arena_list_confirmation(self, results_visible, tap):
         arena = self.make_arena()
@@ -209,7 +215,7 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         # 2 primary attempts + 3 grace taps
         self.assertEqual(tap.call_count, 5)
 
-    @patch('locations.arena.index.tap_to_continue')
+    @patch('locations.arena.index.ArenaFactory._tap_classic_result_continue')
     @patch('locations.arena.index.get_results_screen_signal')
     def test_battle_end_is_tapped_even_before_result_pixels_settle(self, results_visible, tap):
         arena = self.make_arena()
@@ -219,9 +225,9 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         closed = arena._close_classic_result_screen(settle_timeout=0.5)
 
         self.assertTrue(closed)
-        tap.assert_called_once_with(times=1, wait_before=1, wait_after=2)
+        tap.assert_called_once()
 
-    @patch('locations.arena.index.tap_to_continue')
+    @patch('locations.arena.index.ArenaFactory._tap_classic_result_continue')
     @patch('locations.arena.index.get_results_screen_signal', return_value=None)
     def test_false_list_match_cannot_skip_first_battle_end_tap(self, _results_visible, tap):
         arena = self.make_arena()
@@ -231,9 +237,9 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         closed = arena._close_classic_result_screen(settle_timeout=0.5)
 
         self.assertTrue(closed)
-        tap.assert_called_once_with(times=1, wait_before=1, wait_after=2)
+        tap.assert_called_once()
 
-    @patch('locations.arena.index.tap_to_continue')
+    @patch('locations.arena.index.ArenaFactory._tap_classic_result_continue')
     @patch('locations.arena.index.get_results_screen_signal')
     def test_reward_and_battle_summary_are_closed_before_arena_list(self, results_visible, tap):
         arena = self.make_arena()
@@ -249,7 +255,7 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         self.assertTrue(closed)
         self.assertEqual(tap.call_count, 2)
 
-    @patch('locations.arena.index.tap_to_continue')
+    @patch('locations.arena.index.ArenaFactory._tap_classic_result_continue')
     @patch('locations.arena.index.get_results_screen_signal')
     def test_grace_taps_close_remaining_result_screen(self, results_visible, tap):
         arena = self.make_arena()
@@ -262,6 +268,31 @@ class ArenaResultRecoveryTests(unittest.TestCase):
 
         self.assertTrue(closed)
         self.assertGreaterEqual(tap.call_count, 3)
+
+    @patch('locations.arena.index.get_results_screen_signal', return_value='VICTORY')
+    def test_victory_summary_clicks_return_to_arena(self, _results_visible):
+        arena = self.make_arena()
+        arena._observe_arena_screen = MagicMock(
+            return_value=ScreenObservation(
+                ScreenState.RESULT_SUMMARY,
+                1.0,
+                ['RETURN_TO_ARENA'],
+            )
+        )
+
+        x, y, action = arena._get_classic_result_tap_target()
+
+        self.assertEqual(action, 'RETURN TO ARENA')
+        self.assertEqual((x, y), (classic_return_to_arena[0], classic_return_to_arena[1]))
+
+    @patch('locations.arena.index.get_results_screen_signal', return_value='TAP_TO_CONTINUE')
+    def test_reward_screen_clicks_tap_to_continue(self, _results_visible):
+        arena = self.make_arena()
+
+        x, y, action = arena._get_classic_result_tap_target()
+
+        self.assertEqual(action, 'TAP TO CONTINUE')
+        self.assertEqual((x, y), (result_tap_to_continue[0], result_tap_to_continue[1]))
 
 
 if __name__ == '__main__':

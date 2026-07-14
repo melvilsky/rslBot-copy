@@ -310,6 +310,17 @@
     "mistake": 45,
     "description": "Резервный признак TAP TO CONTINUE на экране результата Arena Classic"
   },
+  "return_to_arena": {
+    "x": 450,
+    "y": 498,
+    "rgb": [
+      255,
+      232,
+      125
+    ],
+    "mistake": 25,
+    "description": "Кнопка RETURN TO ARENA на экране итогов боя Classic Arena"
+  },
   "tab_battle": {
     "x": 110,
     "y": 115,
