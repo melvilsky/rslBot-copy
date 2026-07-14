@@ -34,7 +34,12 @@ from helpers.coordinates import (
 from helpers.refill_state import get_purchased_count, get_remaining_refills
 from classes.Location import Location, RunOutcome
 from locations.arena.refill_service import RefillKind, RefillOutcome, RefillService
-from locations.arena.screen_state import ARENA_LIST_SHELL, REFRESH_COOLDOWN_SIGNATURE
+from locations.arena.screen_state import (
+    ARENA_LIST_SHELL,
+    REFRESH_COOLDOWN_SIGNATURE,
+    ScreenState,
+    classify_arena_screen,
+)
 
 # ============================================================================
 # КООРДИНАТЫ ХРАНЯТСЯ В:
@@ -318,6 +323,9 @@ class ArenaFactory(Location):
         self.battle_time_limit = True
         self.max_swipe = 0
         self.classic_defeat_offset = 0
+        self.classic_last_pass_battles = 0
+        self.classic_last_pass_reached_end = False
+        self.classic_last_pass_no_attackable = False
 
         self._apply_props(props=props)
 
@@ -431,7 +439,13 @@ class ArenaFactory(Location):
 
                 if self.terminated is False:
                     should_refresh = False
-                    if len(last_results) == OUTPUT_ITEMS_AMOUNT:
+                    if self.classic_last_pass_reached_end:
+                        self.log('Completed opponent pass through end of list, refreshing')
+                        should_refresh = True
+                    elif self.classic_last_pass_no_attackable:
+                        self.log('No attackable opponents found in pass, refreshing list')
+                        should_refresh = True
+                    elif len(last_results) == OUTPUT_ITEMS_AMOUNT:
                         should_refresh = True
                     elif len(last_results) == 0:
                         should_refresh = True
@@ -484,6 +498,44 @@ class ArenaFactory(Location):
                 return True
         return False
 
+    def _observe_arena_screen(self):
+        return classify_arena_screen(pyautogui.pixel, self.button_locations)
+
+    def _is_arena_list_exhausted(self):
+        observation = self._observe_arena_screen()
+        if observation.state == ScreenState.ARENA_LIST_EXHAUSTED:
+            return True
+        return self._is_arena_list_shell_visible() and not self._has_attackable_targets()
+
+    def _refresh_cooldown_detected(self, observation=None):
+        if observation is None:
+            observation = self._observe_arena_screen()
+        return (
+            'REFRESH_COOLDOWN' in observation.signals
+            or self._is_refresh_cooldown_visible()
+        )
+
+    def _wait_for_free_refresh_available(self):
+        self.log(
+            f'Waiting for free refresh up to {ARENA_REFRESH_COOLDOWN_WAIT_LIMIT}s'
+        )
+        response = self.awaits([
+            self.E_BUTTON_REFRESH,
+            self.E_TERMINATE,
+            self.E_REFRESH_COOLDOWN_TIMEOUT,
+        ])
+        if response and response.get('name') == 'RefreshCooldownTimeout':
+            self.log(
+                f'Free refresh did not become available within '
+                f'{ARENA_REFRESH_COOLDOWN_WAIT_LIMIT}s, deferring'
+            )
+            self.run_outcome = RunOutcome.DEFERRED_REFRESH_COOLDOWN
+            self.terminated = True
+            return False
+        if self.terminated:
+            return False
+        return True
+
     def _is_arena_list_shell_visible(self):
         """Устойчивая оболочка страницы арены (вкладка Battle + левая панель).
         Присутствует и на исчерпанном списке, когда нет ни Attack, ни синей
@@ -509,26 +561,25 @@ class ArenaFactory(Location):
     def refresh_opponent_list(self):
         response = self.awaits([self.E_BUTTON_REFRESH, self.E_TERMINATE, self.E_REFRESH_TIMEOUT])
         if response and response.get('name') == 'RefreshTimeout':
-            # Длинное ожидание разрешено только после положительного
-            # подтверждения cooldown на распознанном списке арены
-            # (план, Этап 3): для UNKNOWN экранов оно запрещено.
-            if self._is_arena_list_shell_visible() and self._is_refresh_cooldown_visible():
+            observation = self._observe_arena_screen()
+            if self._is_arena_list_exhausted():
+                cooldown_hint = (
+                    'cooldown confirmed'
+                    if self._refresh_cooldown_detected(observation)
+                    else 'no free refresh button'
+                )
+                self.log(
+                    f'Exhausted arena list detected ({observation.state.name}, '
+                    f'{cooldown_hint}), waiting for free refresh'
+                )
+                if not self._wait_for_free_refresh_available():
+                    return False
+            elif self._is_arena_list_shell_visible() and self._refresh_cooldown_detected(observation):
                 self.log(
                     f'Refresh cooldown confirmed, waiting for free refresh '
                     f'up to {ARENA_REFRESH_COOLDOWN_WAIT_LIMIT}s'
                 )
-                response = self.awaits([
-                    self.E_BUTTON_REFRESH,
-                    self.E_TERMINATE,
-                    self.E_REFRESH_COOLDOWN_TIMEOUT,
-                ])
-                if response and response.get('name') == 'RefreshCooldownTimeout':
-                    self.log(
-                        f'Free refresh did not become available within '
-                        f'{ARENA_REFRESH_COOLDOWN_WAIT_LIMIT}s, deferring'
-                    )
-                    self.run_outcome = RunOutcome.DEFERRED_REFRESH_COOLDOWN
-                    self.terminated = True
+                if not self._wait_for_free_refresh_available():
                     return False
             else:
                 self.log(
@@ -1117,6 +1168,9 @@ class ArenaFactory(Location):
         """Arena Classic: после боя список сбрасывается в начало."""
         results_local = []
         _sa = swipe_attack_coord
+        self.classic_last_pass_battles = 0
+        self.classic_last_pass_reached_end = False
+        self.classic_last_pass_no_attackable = False
 
         start_index = self.classic_defeat_offset
         swipes_done = 0
@@ -1302,6 +1356,14 @@ class ArenaFactory(Location):
                     self.log(f'Battle finished: list reset to top by the game, re-scrolling from 0 (was {swipes_done})')
                 swipes_done = 0
                 sleep(1)
+
+        else:
+            if not self.terminated:
+                self.classic_last_pass_reached_end = True
+
+        self.classic_last_pass_battles = len(results_local)
+        if not self.terminated and len(results_local) == 0:
+            self.classic_last_pass_no_attackable = True
 
         if len(results_local):
             self.results.append(results_local)
