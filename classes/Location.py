@@ -5,6 +5,7 @@ from classes.Duration import Duration
 from classes.Foundation import Foundation
 from classes.Debug import Debug
 from helpers.common import close_popup_recursive, log, find_popup_error_detector
+from helpers.game_actions import calculate_win_rate
 from datetime import datetime
 
 LOCATIONS_WITH_STORAGE = [
@@ -27,6 +28,32 @@ class RunOutcome(Enum):
     TERMINATED_BY_USER = 'TERMINATED_BY_USER'
     # Legacy-итог: используется, пока локация не сообщила ничего более точного.
     DONE = 'DONE'
+
+
+# Итоги штатного завершения: в лог пишем техническое имя, пользователю — Done.
+USER_FACING_DONE_OUTCOMES = frozenset({
+    RunOutcome.COMPLETED_POLICY_LIMIT,
+    RunOutcome.COMPLETED_RESOURCES_EXHAUSTED,
+    RunOutcome.PARTIAL_LIST_EXHAUSTED,
+})
+
+# Эмодзи для пользовательских уведомлений (лог остаётся без иконок).
+USER_DONE_OUTCOME_ICONS = {
+    RunOutcome.COMPLETED_POLICY_LIMIT: '🏁',
+    RunOutcome.COMPLETED_RESOURCES_EXHAUSTED: '✅',
+    RunOutcome.PARTIAL_LIST_EXHAUSTED: '✅',
+}
+
+USER_OUTCOME_ICONS = {
+    RunOutcome.DONE: '✅',
+    RunOutcome.DEFERRED_REFRESH_COOLDOWN: '⏳',
+    RunOutcome.ABORTED_NAVIGATION: '⚠️',
+    RunOutcome.ABORTED_UNKNOWN_SCREEN: '⚠️',
+    RunOutcome.REFILL_FAILED: '❌',
+    RunOutcome.REFILL_UNCERTAIN: '⚠️',
+    RunOutcome.TERMINATED_BY_USER: '🛑',
+    **USER_DONE_OUTCOME_ICONS,
+}
 
 
 class Location(Foundation):
@@ -126,6 +153,67 @@ class Location(Foundation):
         self.app.prepare(calibrate=False)
         self.event_dispatcher.publish('enter')
 
+    def _run_battle_outcomes_this_run(self):
+        if not isinstance(self.results, list):
+            return []
+
+        start = getattr(self, '_run_results_start', 0)
+        outcomes = []
+        for chunk in self.results[start:]:
+            if isinstance(chunk, list):
+                outcomes.extend(bool(item) for item in chunk)
+            elif isinstance(chunk, bool):
+                outcomes.append(chunk)
+        return outcomes
+
+    def _format_run_battle_summary(self):
+        outcomes = self._run_battle_outcomes_this_run()
+        if not outcomes:
+            return None
+
+        wins = sum(1 for outcome in outcomes if outcome)
+        losses = len(outcomes) - wins
+        return f'{wins}W / {losses}L · WR {calculate_win_rate(wins, losses)}'
+
+    def _append_run_summary(self, text):
+        summary = self._format_run_battle_summary()
+        if summary is None:
+            return text
+        return f'{text}\n📊 {summary}'
+
+    def _user_message(self, icon, text):
+        summary = self._format_run_battle_summary()
+        if summary is None:
+            return f'{icon} {text}'
+        return f'{icon} {text}\n📊 {summary}'
+
+    def _user_icon_for_outcome(self, outcome):
+        icon = USER_OUTCOME_ICONS.get(outcome)
+        if icon is not None:
+            return icon
+        return '⚠️'
+
+    def _build_finish_messages(self, outcome):
+        duration = self.duration.get_last()
+        if self.abort_reason:
+            text = (
+                f"Aborted: {self.NAME} | {self.abort_reason}"
+                f" | Outcome: {outcome.name} | Duration: {duration}"
+            )
+            return text, self._user_message('⚠️', text)
+
+        if outcome is RunOutcome.DONE or outcome in USER_FACING_DONE_OUTCOMES:
+            user_text = f"Done: {self.NAME} | Duration: {duration}"
+            icon = self._user_icon_for_outcome(outcome)
+            if outcome is RunOutcome.DONE:
+                return user_text, self._user_message(icon, user_text)
+            log_text = f"{outcome.name}: {self.NAME} | Duration: {duration}"
+            return log_text, self._user_message(icon, user_text)
+
+        text = f"{outcome.name}: {self.NAME} | Duration: {duration}"
+        icon = self._user_icon_for_outcome(outcome)
+        return text, self._user_message(icon, text)
+
     def finish(self, outcome=None):
         close_popup_recursive()
         self.duration.end()
@@ -133,19 +221,12 @@ class Location(Foundation):
         if outcome is None:
             outcome = self.run_outcome or RunOutcome.DONE
 
-        if self.abort_reason:
-            message_done = (
-                f"Aborted: {self.NAME} | {self.abort_reason}"
-                f" | Outcome: {outcome.name} | Duration: {self.duration.get_last()}"
-            )
-        elif outcome is RunOutcome.DONE:
-            message_done = f"Done: {self.NAME} | Duration: {self.duration.get_last()}"
-        else:
-            message_done = f"{outcome.name}: {self.NAME} | Duration: {self.duration.get_last()}"
+        log_message, user_message = self._build_finish_messages(outcome)
+        log_message = self._append_run_summary(log_message)
 
-        self.log(message_done)
+        self.log(log_message)
         self.event_dispatcher.publish('finish')
-        self.send_message(message_done)
+        self.send_message(user_message)
 
         # @TODO Test
         # self.results.append([True, False])
@@ -164,7 +245,8 @@ class Location(Foundation):
 
         # Terminates when it's 'completed'
         if self.completed:
-            self.log('Already completed', predicate=self.send_message)
+            self.log('Already completed')
+            self.send_message(self._user_message('ℹ️', f'{self.NAME} | Already completed'))
             return
 
         # Re-Login when it's needed
@@ -180,6 +262,7 @@ class Location(Foundation):
         self.run_outcome = RunOutcome.DONE
         self.break_loops = False
         self.run_counter += 1
+        self._run_results_start = len(self.results) if isinstance(self.results, list) else 0
         self.duration.start()
 
         self.enter()

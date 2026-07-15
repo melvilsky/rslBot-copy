@@ -148,6 +148,7 @@ class ArenaLive(Location):
     def __init__(self, app, props=None):
         Location.__init__(self, name='Arena Live', app=app, report_predicate=self._report)
 
+        self.results = []
         self.pool = []
         self.leaders = []
         self.refill = PAID_REFILL_LIMIT
@@ -494,6 +495,7 @@ class ArenaLive(Location):
             record_win('arena_live', profile_name=profile)
         else:
             record_loss('arena_live', profile_name=profile)
+        self.results.append(bool(result))
         result_msg = 'WIN' if result else 'DEFEAT'
         self.log(result_msg)
 
