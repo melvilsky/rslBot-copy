@@ -35,6 +35,7 @@ from helpers.coordinates import get_coordinate, get_mistake, load_coordinates
 from helpers.time_mgr import TimeMgr
 from helpers.refill_state import RefillStateError, get_remaining_refills, increment_purchase
 from locations.hero_filter.index import HeroFilter
+from locations.live_arena.availability import is_index_indicator_active
 from classes.Location import Location
 
 # ============================================================================
@@ -99,9 +100,6 @@ turn_to_pick = [461, 245, [149, 242, 255]]
 # Statuses are not working properly (en localization only)
 # status_active = [320, 420, [50, 165, 42]]
 # status_not_active = [320, 420, [165, 45, 52]]
-
-# index page
-index_indicator_active = [822, 474, [62, 170, 53]]
 
 # the white 'Clock' in the left-top corner
 finish_battle = [21, 46, [255, 255, 255]]
@@ -299,7 +297,7 @@ class ArenaLive(Location):
 
     def _enter(self):
         # Additional check for avoiding further proceeding
-        if not pixel_check_new(index_indicator_active, mistake=10):
+        if not is_index_indicator_active(pixel_check_new):
             self.log("IndexPage indicator is NOT active")
             self.terminate()
             return
