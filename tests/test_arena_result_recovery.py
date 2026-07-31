@@ -3,7 +3,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 
 def module(name, **values):
@@ -157,9 +157,9 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         self.assertEqual(arena._last_arena_list_signal, 'LIST_SHELL')
 
     @patch('locations.arena.index.pixel_check_new')
-    def test_arena_list_falls_back_to_refresh_button(self, pixel_check):
-        # Если оболочка не подтверждена, список ещё может быть подтверждён
-        # по синей кнопке Refresh с tolerance 45.
+    def test_refresh_pixel_alone_cannot_confirm_arena_list(self, pixel_check):
+        # Синий пиксель Refresh встречается на экране награды. Без оболочки
+        # списка он не даёт права считать результат закрытым.
         def only_refresh_matches(point, mistake=10, label=None):
             return point[0:2] == [817, 133]
 
@@ -167,11 +167,49 @@ class ArenaResultRecoveryTests(unittest.TestCase):
         arena = ArenaFactory.__new__(ArenaFactory)
         arena.button_locations = {}
 
-        self.assertTrue(arena._is_arena_list_visible())
-        self.assertEqual(arena._last_arena_list_signal, 'REFRESH_BUTTON')
-        last_call = pixel_check.call_args
-        self.assertEqual(last_call[0][0][0:2], [817, 133])
-        self.assertEqual(last_call[1]['mistake'], 45)
+        self.assertFalse(arena._is_arena_list_visible())
+        self.assertIsNone(arena._last_arena_list_signal)
+        self.assertFalse(any(
+            current.args[0][0:2] == [817, 133]
+            for current in pixel_check.call_args_list
+        ))
+
+    def test_battle_end_requires_two_actionable_result_frames(self):
+        arena = self.make_arena()
+        arena._battle_end_result_frames = 0
+        arena._observe_arena_screen = MagicMock(side_effect=[
+            ScreenObservation(ScreenState.ACTIVE_BATTLE, 1.0, ['BATTLE_TIMER']),
+            ScreenObservation(ScreenState.RESULT_REWARD, 1.0, ['TAP_TO_CONTINUE']),
+            ScreenObservation(ScreenState.RESULT_SUMMARY, 1.0, ['RETURN_TO_ARENA']),
+        ])
+
+        self.assertFalse(arena._is_classic_battle_end_confirmed())
+        self.assertFalse(arena._is_classic_battle_end_confirmed())
+        self.assertTrue(arena._is_classic_battle_end_confirmed())
+
+    @patch('locations.arena.index.sleep')
+    @patch('locations.arena.index.click')
+    def test_zero_tokens_without_ocr_region_uses_configured_refill_button(self, click_mock, _sleep):
+        arena = self.make_arena()
+        arena.read_coins_predicate = MagicMock(return_value=(0, None))
+        arena.refill_coordinates = [624, 48]
+        arena._refill = MagicMock(return_value=True)
+        arena.terminated = False
+
+        self.assertTrue(arena.ensure_tokens())
+        self.assertEqual(click_mock.call_args_list, [call(624, 48), call(624, 48)])
+        arena._refill.assert_called_once_with()
+
+    @patch('locations.arena.index.is_refill_popup_visible', return_value=True)
+    def test_preflight_resolves_leftover_refill_popup_before_scrolling(self, _popup):
+        arena = self.make_arena()
+        arena._observe_arena_screen = MagicMock(
+            return_value=ScreenObservation(ScreenState.UNKNOWN)
+        )
+        arena._refill = MagicMock(return_value=False)
+
+        self.assertFalse(arena._ensure_classic_pass_screen())
+        arena._refill.assert_called_once_with()
 
     @patch('locations.arena.index.get_results_screen_signal', return_value='VICTORY')
     def test_result_screen_has_priority_over_false_arena_list_match(self, _results_visible):

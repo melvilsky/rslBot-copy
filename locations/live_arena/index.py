@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from PIL import Image, ImageDraw
 
 from helpers.common import (
-    find,
     prepare_event,
     sleep,
 )
@@ -36,6 +35,7 @@ from helpers.time_mgr import TimeMgr
 from helpers.refill_state import RefillStateError, get_remaining_refills, increment_purchase
 from locations.hero_filter.index import HeroFilter
 from locations.live_arena.availability import is_index_indicator_active
+from locations.live_arena.picking import pop_next_character
 from classes.Location import Location
 
 # ============================================================================
@@ -364,6 +364,28 @@ class ArenaLive(Location):
         if 'ban_priority' in props:
             self.ban_priority = int(props['ban_priority'])
 
+    def _refresh_paid_refills(self):
+        """Re-read today's UTC allowance instead of trusting startup state.
+
+        The app can stay running across the UTC day boundary.  In that case
+        ``self.refill`` may still contain yesterday's remaining allowance,
+        even though refill_state has already rolled over to a new day.
+        """
+        location_key = self.NAME.lower().replace(' ', '_')
+        profile = getattr(self.app, 'current_player_name', None)
+        previous = self.refill
+        self.refill = get_remaining_refills(
+            location_key,
+            self.refill_max_allowed,
+            profile_name=profile,
+        )
+        if self.refill != previous:
+            self.log(
+                f"Paid refill allowance refreshed (profile={profile or 'default'}): "
+                f"{previous} -> {self.refill} remaining (UTC)"
+            )
+        return self.refill
+
     def _confirm(self):
         click(870, 465)
         sleep(.5)
@@ -511,6 +533,7 @@ class ArenaLive(Location):
 
         if ruby_button is not None:
             self.log('Free coins are NOT available')
+            self._refresh_paid_refills()
             if self.refill > 0:
                 location_key = self.NAME.lower().replace(' ', '_')
                 profile = getattr(self.app, 'current_player_name', None)
@@ -587,18 +610,21 @@ class ArenaLive(Location):
             self.current['next_char'] = None
             self.current['current_char'] = None
 
-            if role is None:
-                role = self.current['sorted_pool'][0]['role']
+            if role is None and self.current['sorted_pool']:
+                role = self.current['sorted_pool'][0].get('role')
 
-            while self.current['next_char'] is None and not self.break_loops:
+            while (
+                self.current['next_char'] is None
+                and self.current['sorted_pool']
+                and not self.break_loops
+            ):
                 # Opponent leaves the battle while picking the character
                 if self.E_OPPONENT_LEFT['expect']():
                     self.E_OPPONENT_LEFT['callback']()
                     debug_save_screenshot(suffix_name='left while picking')
                     break
 
-                i, char = find(self.current['sorted_pool'], lambda x: x.get('role') == role)
-                index_to_remove = 0
+                char = pop_next_character(self.current['sorted_pool'], preferred_role=role)
 
                 if char and not self.break_loops:
                     hero_filter.choose(title=char['name'], wait_after=.5)
@@ -613,10 +639,12 @@ class ArenaLive(Location):
                     # if not pixel_check_new(LIVE_ARENA_HERO_SLOTS[self.current['slots_counter']], mistake=10):
                     #     next_char = char
 
-                    index_to_remove = i
-
-                # @TODO Add checking
-                del self.current['sorted_pool'][index_to_remove]
+            if (
+                self.current['next_char'] is None
+                and not self.current['sorted_pool']
+                and not self.break_loops
+            ):
+                self.log('No available hero candidates remain')
 
             return self.current['next_char']
 
