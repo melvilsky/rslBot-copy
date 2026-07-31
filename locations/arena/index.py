@@ -332,11 +332,12 @@ class ArenaFactory(Location):
         self.classic_last_pass_battles = 0
         self.classic_last_pass_reached_end = False
         self.classic_last_pass_no_attackable = False
+        self._battle_end_result_frames = 0
 
         self._apply_props(props=props)
 
         self.E_BATTLE_END = prepare_event(self.E_BATTLE_END, {
-            "expect": lambda: is_defeat_screen_visible() or is_victory_screen_visible()
+            "expect": self._is_classic_battle_end_confirmed
         })
 
         for i in range(len(self.item_locations)):
@@ -391,6 +392,9 @@ class ArenaFactory(Location):
         # return
         if props is not None:
             self._apply_props(props=props)
+
+        if self.name == 'Arena Classic' and not self._ensure_classic_pass_screen():
+            return
 
         if self.initial_refresh:
             # Best-effort policy (план, Этап 3): если на текущем списке ещё
@@ -482,8 +486,19 @@ class ArenaFactory(Location):
     def ensure_tokens(self) -> bool:
         _coins, _region = self.read_coins_predicate()
         if _coins == 0:
-            _x = _region[0] - 5
-            _y = _region[1] + 5
+            if _region is not None and len(_region) >= 2:
+                _x = _region[0] - 5
+                _y = _region[1] + 5
+            else:
+                # OCR can read a zero while template matching fails to return
+                # the token-number region.  The old code indexed None here
+                # and crashed the whole preset (log 18:19:14).
+                _x = self.refill_coordinates[0]
+                _y = self.refill_coordinates[1]
+                self.log(
+                    'Token counter region was not detected; using configured '
+                    f'refill button at ({_x}, {_y})'
+                )
             click(_x, _y)
             refilled = self._refill()
 
@@ -506,6 +521,29 @@ class ArenaFactory(Location):
 
     def _observe_arena_screen(self):
         return classify_arena_screen(pyautogui.pixel, self.button_locations)
+
+    def _is_classic_battle_end_confirmed(self):
+        """Require two actionable result frames before leaving battle mode.
+
+        Victory/defeat header colours can briefly occur in spell effects
+        during an active fight.  A stable reward/summary screen is both a
+        stronger end signal and proof that a bottom continue action is safe.
+        """
+        observation = self._observe_arena_screen()
+        actionable_result = observation.state in (
+            ScreenState.RESULT_REWARD,
+            ScreenState.RESULT_SUMMARY,
+        )
+        if not actionable_result:
+            self._battle_end_result_frames = 0
+            return False
+
+        self._battle_end_result_frames = getattr(
+            self,
+            '_battle_end_result_frames',
+            0,
+        ) + 1
+        return self._battle_end_result_frames >= 2
 
     def _is_arena_list_exhausted(self):
         observation = self._observe_arena_screen()
@@ -769,20 +807,53 @@ class ArenaFactory(Location):
         if self._is_arena_list_shell_visible():
             self._last_arena_list_signal = 'LIST_SHELL'
             return True
+        return False
 
-        # The refresh-button colour also occurs in the blue result panels.
-        # A loose tolerance therefore produces false ARENA_LIST detections
-        # immediately after BattleEnd. Keep this fallback for a fully used
-        # opponent list. A tolerance of 45 accepts the real Refresh button
-        # from the supplied Arena-list screenshot, while the victory panels
-        # differ by more than that.
-        if pixel_check_new(
-            button_refresh,
-            mistake=button_refresh_mistake,
-            label="list_refresh_button",
-        ):
-            self._last_arena_list_signal = 'REFRESH_BUTTON'
+    def _ensure_classic_pass_screen(self):
+        """Recover known safe states before scrolling the Classic list."""
+        if self._is_arena_list_visible():
             return True
+
+        observation = self._observe_arena_screen()
+        if observation.state == ScreenState.ACTIVE_BATTLE:
+            self.log('Active battle found before opponent pass; waiting for its result')
+            self._battle_end_result_frames = 0
+            self.waiting_battle_end_regular(
+                self.name,
+                battle_time_limit=self.battle_time_limit,
+            )
+            if self.terminated:
+                return False
+            if self._close_classic_result_screen():
+                return True
+            return self._recover_to_arena_list()
+
+        if observation.state in (ScreenState.RESULT_REWARD, ScreenState.RESULT_SUMMARY):
+            self.log('Residual Classic Arena result screen detected; closing it')
+            if self._close_classic_result_screen():
+                return True
+            return self._recover_to_arena_list()
+
+        if is_refill_popup_visible(is_tag=False):
+            self.log('Refill popup found before opponent pass; resolving it first')
+            if not self._refill():
+                return False
+            for _ in range(6):
+                if self._is_arena_list_visible():
+                    return True
+                sleep(0.5)
+
+        self.log(
+            f'Classic Arena list is not confirmed before opponent pass '
+            f'(screen: {observation.state.name}); stopping'
+        )
+        debug_save_screenshot(suffix_name='classic-pass-preflight-unknown')
+        self.abort_reason = (
+            f'arena list not confirmed before opponent pass '
+            f'(screen: {observation.state.name})'
+        )
+        self.run_outcome = RunOutcome.ABORTED_UNKNOWN_SCREEN
+        self.terminated = True
         return False
 
     def _wait_for_classic_post_result_state(self, timeout=10, interval=0.5):
@@ -1211,6 +1282,9 @@ class ArenaFactory(Location):
         self.classic_last_pass_reached_end = False
         self.classic_last_pass_no_attackable = False
 
+        if not self._ensure_classic_pass_screen():
+            return
+
         start_index = self.classic_defeat_offset
         swipes_done = 0
 
@@ -1363,6 +1437,7 @@ class ArenaFactory(Location):
                         self.terminated = True
                         break
 
+                self._battle_end_result_frames = 0
                 self.waiting_battle_end_regular(self.name, battle_time_limit=self.battle_time_limit)
                 if is_debug_mode():
                     debug_save_screenshot(suffix_name=f"classic-battle-result-i{i}")
