@@ -121,10 +121,10 @@ class LiveArenaRefillRolloverTests(unittest.TestCase):
         increment_purchase.assert_called_once_with('arena_live', 3, profile_name='Lema')
         self.assertEqual(arena.refill, 2)
         self.assertEqual(arena._click_on_find_opponent.call_count, 2)
-        self.assertTrue(any(
-            '0 -> 3 remaining' in call.args[0]
-            for call in arena.log.call_args_list
-        ))
+        arena.log.assert_any_call(
+            'Paid refill allowance refreshed (profile=Lema): '
+            '0 -> 3 remaining (UTC)'
+        )
 
 
 if __name__ == '__main__':
