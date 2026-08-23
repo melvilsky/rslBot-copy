@@ -153,6 +153,39 @@ class RefillServiceTransactionTests(unittest.TestCase):
             1,
         )
 
+    def test_paid_refill_confirmed_when_before_unreadable_and_tokens_appeared(self):
+        # Реальный лог Arena Tag 2026-08-21/22: попап закрывает HUD,
+        # tokens_before=None, после клика OCR читает 10. Это покупка, не uncertain.
+        service, clicks = self.make_service(
+            RefillKind.PAID, popup_closes=True, tokens_sequence=(None, 10)
+        )
+
+        result = service.execute()
+
+        self.assertEqual(result.outcome, RefillOutcome.SUCCESS)
+        self.assertEqual(len(clicks), 1)
+        self.assertEqual(
+            refill_state.get_purchased_count(self.LOCATION, self.PROFILE), 1
+        )
+        attempt = self.attempts()[0]
+        self.assertEqual(attempt['status'], 'confirmed')
+        self.assertIsNone(attempt['tokens_before'])
+        self.assertEqual(attempt['tokens_after'], 10)
+        self.assertTrue(result.refilled)
+
+    def test_paid_refill_uncertain_when_popup_closed_and_after_read_is_zero(self):
+        service, _clicks = self.make_service(
+            RefillKind.PAID, popup_closes=True, tokens_sequence=(None, 0)
+        )
+
+        result = service.execute()
+
+        self.assertEqual(result.outcome, RefillOutcome.UNCERTAIN)
+        self.assertEqual(
+            refill_state.get_purchased_count(self.LOCATION, self.PROFILE), 0
+        )
+        self.assertEqual(self.attempts()[0]['status'], 'uncertain')
+
     def test_paid_refill_uncertain_when_popup_closed_but_tokens_unreadable(self):
         # Popup исчез, но баланс прочитать не удалось: одного исчезновения
         # popup недостаточно для подтверждения платной покупки.
