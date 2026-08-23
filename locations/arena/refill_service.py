@@ -65,6 +65,54 @@ class RefillResult:
         )
 
 
+def _tokens_increased(tokens_before, tokens_after):
+    return (
+        tokens_before is not None
+        and tokens_after is not None
+        and tokens_after > tokens_before
+    )
+
+
+def _tokens_appeared_after_unreadable_before(tokens_before, tokens_after):
+    """HUD под попапом: до клика OCR не читает баланс, после — пачка жетонов."""
+    return (
+        tokens_before is None
+        and tokens_after is not None
+        and tokens_after > 0
+    )
+
+
+def _classify_paid_postcondition(popup_closed, tokens_before, tokens_after):
+    """Классификация постусловия платной покупки.
+
+    Returns:
+        (confirmed, failed, reason)
+        confirmed/failed взаимоисключающие; оба False — uncertain.
+    """
+    tokens_grew = _tokens_increased(tokens_before, tokens_after)
+    tokens_appeared = _tokens_appeared_after_unreadable_before(tokens_before, tokens_after)
+    balance_confirmed = tokens_grew or tokens_appeared
+
+    if popup_closed and balance_confirmed:
+        if tokens_grew:
+            reason = 'popup closed and token balance increased'
+        else:
+            reason = (
+                f"popup closed and tokens appeared after unreadable before-read "
+                f"({tokens_before}->{tokens_after})"
+            )
+        return True, False, reason
+
+    if not popup_closed and not balance_confirmed:
+        return False, True, 'popup still visible and token balance unchanged'
+
+    reason = (
+        f"ambiguous postcondition: popup_closed={popup_closed}, "
+        f"tokens {tokens_before}->{tokens_after}"
+    )
+    return False, False, reason
+
+
 class RefillService:
     """
     Все взаимодействия с экраном передаются снаружи предикатами, поэтому
@@ -163,27 +211,19 @@ class RefillService:
             return None
 
     def _resolve(self, kind, attempt_id, tokens_before, tokens_after, popup_closed):
-        tokens_increased = (
-            tokens_before is not None
-            and tokens_after is not None
-            and tokens_after > tokens_before
-        )
-
         if kind is RefillKind.PAID:
-            # Подтверждение платной покупки требует более одного сигнала:
-            # исчезновение popup само по себе не доказывает транзакцию.
-            if popup_closed and tokens_increased:
+            # Два независимых сигнала: popup закрылся и жетоны появились.
+            # До клика HUD часто закрыт попапом, поэтому tokens_before=None —
+            # тогда читаемый баланс после клика (None->10) тоже подтверждает покупку.
+            paid_confirmed, paid_failed, reason = _classify_paid_postcondition(
+                popup_closed, tokens_before, tokens_after
+            )
+            if paid_confirmed:
                 status, outcome = ATTEMPT_CONFIRMED, RefillOutcome.SUCCESS
-                reason = 'popup closed and token balance increased'
-            elif not popup_closed and not tokens_increased:
+            elif paid_failed:
                 status, outcome = ATTEMPT_FAILED, RefillOutcome.FAILED
-                reason = 'popup still visible and token balance unchanged'
             else:
                 status, outcome = ATTEMPT_UNCERTAIN, RefillOutcome.UNCERTAIN
-                reason = (
-                    f"ambiguous postcondition: popup_closed={popup_closed}, "
-                    f"tokens {tokens_before}->{tokens_after}"
-                )
         else:
             # Free refill: закрывшийся popup достаточен, растратить лимит
             # он не может; выросший баланс — дополнительное подтверждение.
