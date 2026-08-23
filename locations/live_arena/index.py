@@ -115,6 +115,8 @@ battle_start_turn = [341, 74, [86, 191, 255]]
 
 PAID_REFILL_LIMIT = 1
 ARCHIVE_PATTERN_FIRST = [1, 2, 2]
+LIVE_ARENA_TOKEN_PACK = 5
+MAX_LIVE_ARENA_REENTRIES = 2
 
 # Сундук прогресса (награда за 35 побед) — попап появляется после нажатия "поиск соперника"
 PROGRESS_CHEST = [483, 226, [109, 50, 42]]
@@ -153,6 +155,9 @@ class ArenaLive(Location):
         self.idle_after_defeat = 0
         self.refill_max_allowed = PAID_REFILL_LIMIT  # Сохраняем максимальное значение из конфига
         self.ban_priority = None  # 1-5 = слот врага для бана; None = случайный слот
+        self._paid_refill_exhausted = False
+        self._live_reentries = 0
+        self._battles_at_last_reentry = None
 
         # The variable resets each battle start
         self.current = {
@@ -315,19 +320,17 @@ class ArenaLive(Location):
             self.log('Active')
             has_pool = bool(len(self.pool))
             if has_pool:
+                self._paid_refill_exhausted = False
+                self._live_reentries = 0
+                self._battles_at_last_reentry = None
+
                 self.obtain()
-
-                while self._is_available():
-                    self.break_loops = False
-
-                    self._claim_free_refill_coins()
-                    self._claim_chest()
-
-                    if self._refill():
+                while True:
+                    self._run_live_arena_battles()
+                    if not self._should_reenter_live_arena():
                         break
-
-                    self.attack()
-
+                    if not self._reenter_live_arena():
+                        break
                 self.obtain()
                 # @TODO Temp commented
                 # self.event_dispatcher.publish('update_results')
@@ -430,6 +433,33 @@ class ArenaLive(Location):
 
         return False
 
+    def _is_find_opponent_visible(self):
+        return pixel_check_new(find_opponent, mistake=20, label='find_opponent')
+
+    def _is_match_started(self):
+        return (
+            pixel_check_new(first, mistake=10, label='pick_first')
+            or pixel_check_new(second, mistake=10, label='pick_second')
+        )
+
+    def _resume_after_progress_chest(self):
+        """After the 35-win chest, recover lobby/search instead of aborting leftover runs."""
+        for attempt in range(4):
+            if self._is_match_started():
+                self.log('Progress chest claimed; pick phase visible — continuing remaining runs')
+                return
+            if self._is_find_opponent_visible():
+                self.log('Progress chest claimed; clicking find opponent again')
+                self._click_on_find_opponent(abort_on_fail=False, wait_limit=8)
+                return
+            if attempt < 3:
+                tap_to_continue(wait_before=0.4, wait_after=0.4)
+
+        self.log(
+            'Progress chest claimed; find opponent not visible — '
+            'assuming search in progress, not aborting remaining runs'
+        )
+
     def _claim_free_refill_coins(self):
         from helpers.common import pixel_check_new
         
@@ -454,7 +484,7 @@ class ArenaLive(Location):
         else:
             self.log(f"Red dot NOT found at ({x_check}, {y_check})")
 
-    def _click_on_find_opponent(self):
+    def _click_on_find_opponent(self, abort_on_fail=True, wait_limit=65):
         # Отладочный вывод: проверяем цвет пикселя перед ожиданием
         x = find_opponent[0]
         y = find_opponent[1]
@@ -480,7 +510,7 @@ class ArenaLive(Location):
             except Exception as e:
                 self.log(f"ERROR checking pixel: {e}")
         
-        if not await_click([find_opponent], msg="Click on find opponent", mistake=20, wait_limit=65)[0]:
+        if not await_click([find_opponent], msg="Click on find opponent", mistake=20, wait_limit=wait_limit)[0]:
             # Если не нашли, еще раз проверим цвет для отладки
             if is_debug_mode():
                 self.log("Failed to find opponent button. Checking pixel color again...")
@@ -499,14 +529,96 @@ class ArenaLive(Location):
                     self.log(f"  Matches:      {matches}")
                 except Exception as e:
                     self.log(f"ERROR checking pixel after failure: {e}")
-            
-            self.terminate()
+
+            if abort_on_fail:
+                self.log('Find opponent button not found — aborting')
+                self.terminate()
+            else:
+                self.log('Find opponent button not found, not aborting remaining runs')
+            return False
+
+        return True
 
     def _is_available(self):
         if not find_indicator_active():
             self.terminate()
 
         return not self.terminated
+
+    def _battles_this_run(self):
+        start = getattr(self, '_run_results_start', 0)
+        results = self.results if isinstance(self.results, list) else []
+        count = 0
+        for chunk in results[start:]:
+            if isinstance(chunk, list):
+                count += len(chunk)
+            elif isinstance(chunk, bool):
+                count += 1
+        return count
+
+    def _run_live_arena_battles(self):
+        while self._is_available():
+            self.break_loops = False
+
+            self._claim_free_refill_coins()
+            self._claim_chest()
+
+            if self._refill():
+                break
+
+            self.attack()
+
+    def _should_reenter_live_arena(self):
+        if getattr(self, '_live_reentries', 0) >= MAX_LIVE_ARENA_REENTRIES:
+            self.log(
+                f'Live Arena re-entry limit reached ({MAX_LIVE_ARENA_REENTRIES}), continuing preset'
+            )
+            return False
+
+        if getattr(self, '_paid_refill_exhausted', False):
+            return False
+
+        if getattr(self, 'abort_reason', None):
+            return False
+
+        battles = self._battles_this_run()
+        if (
+            self._battles_at_last_reentry is not None
+            and battles == self._battles_at_last_reentry
+        ):
+            self.log('Live Arena re-entry made no progress, stopping recovery')
+            return False
+
+        leftover_tokens = battles % LIVE_ARENA_TOKEN_PACK != 0
+        unused_paid_refill = self.refill > 0
+        if leftover_tokens or unused_paid_refill:
+            self.log(
+                f'Live Arena battles this run: {battles}, paid refills left: {self.refill}'
+            )
+            return True
+        return False
+
+    def _reenter_live_arena(self):
+        self._live_reentries = getattr(self, '_live_reentries', 0) + 1
+        self._battles_at_last_reentry = self._battles_this_run()
+        self.log(
+            f'Leftover Live Arena tokens likely, returning to index and re-entering '
+            f'({self._live_reentries}/{MAX_LIVE_ARENA_REENTRIES})'
+        )
+        self.terminated = False
+        self.break_loops = False
+        self.enter()
+        if self.terminated:
+            self.log('Live Arena re-entry aborted during enter')
+            return False
+
+        result = self.awaits([self.E_INDICATOR_ACTIVE])
+        if result['name'] == self.EVENT_NOT_FOUND:
+            self.log('Live Arena not active after re-entry, stopping recovery')
+            return False
+
+        self.obtain()
+        return True
 
     def _save_result(self, result):
         from helpers.battle_stats import record_win, record_loss
@@ -521,13 +633,18 @@ class ArenaLive(Location):
 
     def _refill(self):
         self._click_on_find_opponent()
+        if self.terminated:
+            return True
 
         sleep(3)
 
         # Попап сундука прогресса (35 побед) перекрывает экран поиска — проверяем и забираем
         if self._check_progress_chest():
-            self._click_on_find_opponent()
-            sleep(1)
+            self._resume_after_progress_chest()
+            if self.terminated:
+                return True
+            if self._is_match_started():
+                return False
 
         ruby_button = find_needle_refill_ruby()
 
@@ -552,6 +669,7 @@ class ArenaLive(Location):
                 self._click_on_find_opponent()
             else:
                 self.log('No more refill')
+                self._paid_refill_exhausted = True
                 self.terminate()
         elif pixels_wait([refill_free], msg='Free refill sacs', mistake=get_coordinate_mistake('refill_free', default_mistake=10), timeout=1, wait_limit=2)[0]:
             self.log('Free coins are available')
