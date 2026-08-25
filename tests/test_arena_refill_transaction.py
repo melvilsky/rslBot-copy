@@ -186,24 +186,39 @@ class RefillServiceTransactionTests(unittest.TestCase):
         )
         self.assertEqual(self.attempts()[0]['status'], 'uncertain')
 
-    def test_paid_refill_uncertain_when_popup_closed_but_tokens_unreadable(self):
-        # Popup исчез, но баланс прочитать не удалось: одного исчезновения
-        # popup недостаточно для подтверждения платной покупки.
-        service, _clicks = self.make_service(
+    def test_paid_refill_confirmed_when_popup_closed_and_tokens_unreadable(self):
+        # Log 2026-08-24: paid click, popup closed, OCR None->None, bot aborted
+        # and left 10 purchased tags unused. Closed paid popup is confirmation.
+        service, clicks = self.make_service(
             RefillKind.PAID, popup_closes=True, tokens_sequence=(None, None)
         )
 
         result = service.execute()
 
-        self.assertEqual(result.outcome, RefillOutcome.UNCERTAIN)
+        self.assertEqual(result.outcome, RefillOutcome.SUCCESS)
+        self.assertEqual(len(clicks), 1)
         self.assertEqual(
-            refill_state.get_purchased_count(self.LOCATION, self.PROFILE), 0
+            refill_state.get_purchased_count(self.LOCATION, self.PROFILE), 1
         )
-        self.assertEqual(self.attempts()[0]['status'], 'uncertain')
+        self.assertEqual(self.attempts()[0]['status'], 'confirmed')
+        self.assertTrue(result.refilled)
+
+    def test_paid_refill_recovers_after_read_when_hud_settles(self):
+        service, _clicks = self.make_service(
+            RefillKind.PAID, popup_closes=True, tokens_sequence=(None, None, 10)
+        )
+
+        result = service.execute()
+
+        self.assertEqual(result.outcome, RefillOutcome.SUCCESS)
+        self.assertEqual(result.tokens_after, 10)
+        self.assertEqual(
+            refill_state.get_purchased_count(self.LOCATION, self.PROFILE), 1
+        )
 
     def test_uncertain_attempt_blocks_second_paid_attempt(self):
         first, _ = self.make_service(
-            RefillKind.PAID, popup_closes=True, tokens_sequence=(None, None)
+            RefillKind.PAID, popup_closes=True, tokens_sequence=(None, 0)
         )
         self.assertEqual(first.execute().outcome, RefillOutcome.UNCERTAIN)
 

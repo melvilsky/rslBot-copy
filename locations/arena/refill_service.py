@@ -103,6 +103,16 @@ def _classify_paid_postcondition(popup_closed, tokens_before, tokens_after):
             )
         return True, False, reason
 
+    # Paid click already happened on a ruby-confirmed popup. If the popup
+    # then closed but the HUD is still unreadable, aborting wastes a real
+    # purchase (Arena Tag 2026-08-24: None->None, then unused 10 tags).
+    # A readable zero stays uncertain: OCR saw no tokens.
+    if popup_closed and tokens_after is None:
+        return True, False, (
+            f"popup closed after paid click with unreadable after-read "
+            f"({tokens_before}->{tokens_after})"
+        )
+
     if not popup_closed and not balance_confirmed:
         return False, True, 'popup still visible and token balance unchanged'
 
@@ -127,6 +137,10 @@ class RefillService:
 
     POSTCONDITION_TIMEOUT = 10
     POSTCONDITION_INTERVAL = 0.5
+    # HUD often lags behind the refill popup: a purchase overlay can still
+    # cover the token counter after is_popup_visible() is already False.
+    TOKEN_AFTER_RETRY_TIMEOUT = 3
+    TOKEN_AFTER_RETRY_INTERVAL = 0.5
 
     def __init__(
             self,
@@ -180,7 +194,7 @@ class RefillService:
         self.click_refill()
 
         popup_closed = self._wait_popup_closed()
-        tokens_after = self._safe_read_tokens()
+        tokens_after = self._read_tokens_after_popup(popup_closed)
         return self._resolve(kind, attempt_id, tokens_before, tokens_after, popup_closed)
 
     def _begin_error_result(self, kind, error):
@@ -210,11 +224,30 @@ class RefillService:
             self.log(f"Token balance read failed: {error}")
             return None
 
+    def _read_tokens_after_popup(self, popup_closed):
+        tokens_after = self._safe_read_tokens()
+        if tokens_after is not None or not popup_closed:
+            return tokens_after
+
+        waited = 0
+        while waited < self.TOKEN_AFTER_RETRY_TIMEOUT:
+            self.wait(self.TOKEN_AFTER_RETRY_INTERVAL)
+            waited += self.TOKEN_AFTER_RETRY_INTERVAL
+            tokens_after = self._safe_read_tokens()
+            if tokens_after is not None:
+                self.log(
+                    f"Token after-read recovered after {waited:.1f}s settle "
+                    f"(tokens={tokens_after})"
+                )
+                return tokens_after
+        return tokens_after
+
     def _resolve(self, kind, attempt_id, tokens_before, tokens_after, popup_closed):
         if kind is RefillKind.PAID:
-            # Два независимых сигнала: popup закрылся и жетоны появились.
-            # До клика HUD часто закрыт попапом, поэтому tokens_before=None —
-            # тогда читаемый баланс после клика (None->10) тоже подтверждает покупку.
+            # Signals: popup closed, and/or tokens appeared. Before the click
+            # the HUD is often covered (tokens_before=None). After the click a
+            # lingering overlay can also make tokens_after unreadable; a closed
+            # paid popup is then enough to confirm so the run keeps using tags.
             paid_confirmed, paid_failed, reason = _classify_paid_postcondition(
                 popup_closed, tokens_before, tokens_after
             )
