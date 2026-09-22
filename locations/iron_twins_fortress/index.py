@@ -11,6 +11,7 @@ from helpers.game_actions import (
 )
 from helpers.mouse import click
 from helpers.popups import close_popup
+from helpers.screen import debug_save_screenshot
 from helpers.vision import (
     find_needle_refill_ruby,
     pixel_check_new,
@@ -89,18 +90,18 @@ class IronTwins(Location):
         matches_on = all(d <= mistake for d in diff_on)
         matches_off = all(d <= mistake for d in diff_off)
 
-        self.log(f"SUPER RAIDS pixel ({x}, {y}): actual={actual}")
-        self.log(f"  vs enabled  {rgb_enabled}: diff={diff_on}, match={matches_on}")
-        self.log(f"  vs disabled {rgb_disabled}: diff={diff_off}, match={matches_off}")
+        self.log(f"SUPER RAIDS pixel ({x}, {y}): actual={actual}", level='debug')
+        self.log(f"  vs enabled  {rgb_enabled}: diff={diff_on}, match={matches_on}", level='debug')
+        self.log(f"  vs disabled {rgb_disabled}: diff={diff_off}, match={matches_off}", level='debug')
 
         if matches_on:
-            self.log("  → ENABLED")
+            self.log("  → ENABLED", level='debug')
             return True
         if matches_off:
-            self.log("  → DISABLED")
+            self.log("  → DISABLED", level='debug')
             return False
 
-        self.log("  → TRANSITIONAL (screen still loading)")
+        self.log("  → TRANSITIONAL (screen still loading)", level='debug')
         return None
 
     def _ensure_super_raids_enabled(self):
@@ -119,7 +120,10 @@ class IronTwins(Location):
             waited += 0.5
 
         if state is None:
-            self.log(f"WARNING: SUPER RAIDS pixel did not settle after {max_wait}s, forcing click")
+            self.log(
+                f"SUPER RAIDS pixel did not settle after {max_wait}s at ({x}, {y}), forcing click",
+                level='warning',
+            )
 
         if state is True:
             self.log("SUPER RAIDS already enabled — no click needed")
@@ -145,7 +149,15 @@ class IronTwins(Location):
             self.log("SUPER RAIDS enabled successfully after 2nd click")
             return True
 
-        self.log("ERROR: SUPER RAIDS failed to enable after 2 attempts")
+        actual = [c for c in pyautogui.pixel(x, y)]
+        shot = debug_save_screenshot(suffix_name='super-raids-enable-failed')
+        self.log(
+            f"SUPER RAIDS failed to enable after 2 attempts at ({x}, {y}): "
+            f"actual={actual}, enabled={list(self.super_raids_coord[2])}, "
+            f"disabled={list(self.super_raids_rgb_disabled)}; "
+            f"continuing with SUPER RAIDS state unknown; screenshot={shot}",
+            level='error',
+        )
         return False
 
     def _run(self, props=None):

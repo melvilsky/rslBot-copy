@@ -43,7 +43,10 @@ def click(x, y, smart=False, timeout=0.5, interval=2, random_click=None):
         while pixel_check_new([x, y, rgb]) and counter < 3:
             if counter == 0:
                 sleep(timeout)
-            log('Delay occurred, re-trying to click again')
+            log(
+                f'Delay occurred, re-trying click at ({x}, {y}), '
+                f'rgb still {list(rgb)}'
+            )
             click(x, y)
             sleep(interval)
             counter += 1

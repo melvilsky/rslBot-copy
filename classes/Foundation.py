@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import numpy as np
 from helpers.common import prepare_event, sleep
 from helpers.game_actions import detect_pause_button, dungeons_replay
-from helpers.logging_utils import log
+from helpers.logging_utils import log, log_debug, log_error, log_warning
 from helpers.mouse import await_click, click, move_out_cursor
 from helpers.vision import (
     find_button,
@@ -131,9 +131,16 @@ class Foundation:
         self.name = name
         self.break_loops = False
 
-    def log(self, msg, predicate=None):
+    def log(self, msg, predicate=None, level='info'):
         log_msg = f'{self.name} | {msg}'
-        log(log_msg)
+        if level == 'debug':
+            log_debug(log_msg)
+        elif level == 'warning':
+            log_warning(log_msg)
+        elif level == 'error':
+            log_error(log_msg)
+        else:
+            log(log_msg)
         if predicate:
             predicate(log_msg)
 
@@ -145,10 +152,14 @@ class Foundation:
         counter = 0
         time_tracker = {}
         limit_tracker = {}
+        heartbeat_s = 30
+        last_heartbeat_at = None
+        last_check_name = None
+        last_check_matched = None
 
         events_names_list = list(map(lambda el: el['name'], events))
         events_names_str = str(np.array(events_names_list, dtype=object))
-        log(f"Events checking: {events_names_str}")
+        log_debug(f"Events checking: {events_names_str}")
 
         start_call_time = datetime.now()
         current_time = None
@@ -193,16 +204,14 @@ class Foundation:
                     _blocking = bool(_e['blocking']) if 'blocking' in _e else True
                     _callback = _e['callback'] if 'callback' in _e else None
 
-                    # current_time = datetime.now()
-                    # print(f"{current_time.second} - {_name}")
-
                     # Call the function and update last call time
                     time_tracker[_name] = datetime.now()
 
                     res = _expect()
-                    if bool(res):
+                    last_check_name = _name
+                    last_check_matched = bool(res)
+                    if last_check_matched:
                         log(f'Event occurred: {_name}')
-                        # print(_name, bool(res))
 
                         if _blocking:
                             response = {"name": _name, "data": res}
@@ -213,6 +222,24 @@ class Foundation:
                         # Tracks limited events
                         if limit_tracker[_name] is not None:
                             limit_tracker[_name] = limit_tracker[_name] - 1
+
+            elapsed = (datetime.now() - start_call_time).total_seconds()
+            if elapsed >= heartbeat_s and (
+                last_heartbeat_at is None
+                or (datetime.now() - last_heartbeat_at).total_seconds() >= heartbeat_s
+            ):
+                last_heartbeat_at = datetime.now()
+                active = [
+                    e['name'] for e in events
+                    if _check_limit(e) and _check_wait_limit(e)
+                ]
+                last_bit = ''
+                if last_check_name is not None:
+                    match_txt = 'matched' if last_check_matched else 'no match'
+                    last_bit = f", last check '{last_check_name}'={match_txt}"
+                log(
+                    f"Still waiting ({int(elapsed)}s) for: {active}{last_bit}"
+                )
 
             # breaks the main loop, when no active events found (checks 'limit' and 'wait_limit')
             should_break = list(filter(lambda e: _check_limit(e) and _check_wait_limit(e), events))

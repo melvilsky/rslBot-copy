@@ -92,7 +92,10 @@ sys.modules.pop('locations.live_arena.index', None)
 from locations.live_arena.index import (
     ArenaLive,
     LIVE_ARENA_TOKEN_PACK,
+    MATCHMAKING_TIMEOUT_NAME,
+    MATCHMAKING_TIMEOUT_S,
     MAX_LIVE_ARENA_REENTRIES,
+    MAX_MATCHMAKING_ATTEMPTS,
 )
 
 
@@ -353,6 +356,127 @@ class LiveArenaTokenPackRecoveryTests(unittest.TestCase):
         self.assertTrue(result)
         self.assertTrue(arena._paid_refill_exhausted)
         arena.terminate.assert_called_once_with()
+
+
+class LiveArenaMatchmakingTests(unittest.TestCase):
+    def _arena(self):
+        arena = ArenaLive.__new__(ArenaLive)
+        arena.log = MagicMock()
+        arena.terminated = False
+        arena.break_loops = False
+        arena.abort_reason = None
+        arena.EVENT_NOT_FOUND = 'EVENT_NOT_FOUND'
+        arena.E_PICK_FIRST = {'name': 'PickFirst'}
+        arena.E_PICK_SECOND = {'name': 'PickSecond'}
+        arena.E_CANT_FIND_OPPONENT = {'name': 'CantFindAnOpponent'}
+        arena.E_INDICATOR_INACTIVE = {'name': 'IndicatorInactive'}
+
+        def terminate(*args, **kwargs):
+            arena.terminated = True
+            arena.break_loops = True
+
+        arena.terminate = terminate
+        arena.awaits = MagicMock()
+        arena._is_match_started = MagicMock(return_value=False)
+        arena._is_cant_find_opponent_visible = MagicMock(return_value=False)
+        arena._is_find_opponent_visible = MagicMock(return_value=False)
+        arena._match_start_event_name = MagicMock(return_value=None)
+        arena._retry_find_opponent_after_no_match = MagicMock()
+        return arena
+
+    def test_matchmaking_events_include_timeout(self):
+        arena = self._arena()
+
+        names = [event['name'] for event in arena._matchmaking_start_events()]
+        timeout = next(
+            event for event in arena._matchmaking_start_events()
+            if event['name'] == MATCHMAKING_TIMEOUT_NAME
+        )
+
+        self.assertIn('PickFirst', names)
+        self.assertIn('CantFindAnOpponent', names)
+        self.assertEqual(timeout['delay'], MATCHMAKING_TIMEOUT_S)
+        self.assertTrue(timeout['expect']())
+
+    def test_wait_returns_when_pick_starts(self):
+        arena = self._arena()
+        arena.awaits.return_value = {'name': 'PickFirst'}
+
+        self.assertEqual(arena._wait_for_match_start(), 'PickFirst')
+        self.assertFalse(arena.terminated)
+        self.assertIsNone(arena.abort_reason)
+        arena.awaits.assert_called_once()
+
+    def test_stuck_search_aborts_so_preset_can_continue(self):
+        arena = self._arena()
+        arena.awaits.return_value = {'name': MATCHMAKING_TIMEOUT_NAME}
+
+        with patch('locations.live_arena.index.debug_save_screenshot'):
+            result = arena._wait_for_match_start()
+
+        self.assertIsNone(result)
+        self.assertTrue(arena.terminated)
+        self.assertEqual(arena.abort_reason, 'live arena matchmaking timeout')
+        arena._retry_find_opponent_after_no_match.assert_not_called()
+        arena.awaits.assert_called_once()
+
+    def test_cant_find_retries_then_returns_on_pick(self):
+        arena = self._arena()
+        arena.awaits.side_effect = [
+            {'name': 'CantFindAnOpponent'},
+            {'name': 'PickSecond'},
+        ]
+
+        self.assertEqual(arena._wait_for_match_start(), 'PickSecond')
+        self.assertFalse(arena.terminated)
+        arena._retry_find_opponent_after_no_match.assert_called_once()
+        self.assertEqual(arena.awaits.call_count, 2)
+
+    def test_cant_find_aborts_after_max_attempts(self):
+        arena = self._arena()
+        arena.awaits.return_value = {'name': 'CantFindAnOpponent'}
+
+        result = arena._wait_for_match_start()
+
+        self.assertIsNone(result)
+        self.assertTrue(arena.terminated)
+        self.assertEqual(arena.abort_reason, 'live arena matchmaking timeout')
+        self.assertEqual(arena.awaits.call_count, MAX_MATCHMAKING_ATTEMPTS)
+        self.assertEqual(
+            arena._retry_find_opponent_after_no_match.call_count,
+            MAX_MATCHMAKING_ATTEMPTS - 1,
+        )
+
+    def test_timeout_retries_when_cant_find_popup_is_visible(self):
+        arena = self._arena()
+        arena._is_cant_find_opponent_visible.return_value = True
+        arena.awaits.side_effect = [
+            {'name': MATCHMAKING_TIMEOUT_NAME},
+            {'name': 'PickFirst'},
+        ]
+
+        with patch('locations.live_arena.index.debug_save_screenshot'):
+            result = arena._wait_for_match_start()
+
+        self.assertEqual(result, 'PickFirst')
+        self.assertFalse(arena.terminated)
+        arena._retry_find_opponent_after_no_match.assert_called_once()
+
+    def test_inactive_indicator_stops_without_abort_reason(self):
+        arena = self._arena()
+        arena.awaits.return_value = {'name': 'IndicatorInactive'}
+
+        result = arena._wait_for_match_start()
+
+        self.assertIsNone(result)
+        self.assertTrue(arena.terminated)
+        self.assertIsNone(arena.abort_reason)
+
+    def test_matchmaking_abort_blocks_live_arena_reentry(self):
+        arena = LiveArenaTokenPackRecoveryTests()._arena(battles=11, refill=1)
+        arena.abort_reason = 'live arena matchmaking timeout'
+
+        self.assertFalse(arena._should_reenter_live_arena())
 
 
 if __name__ == '__main__':

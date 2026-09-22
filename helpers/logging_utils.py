@@ -72,7 +72,7 @@ def _get_logs_dir():
 
 if not logger.handlers:
     c_handler = logging.StreamHandler(sys.stdout)
-    c_format = ColoredFormatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S')
+    c_format = ColoredFormatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%H:%M:%S')
     c_handler.setFormatter(c_format)
     logger.addHandler(c_handler)
 
@@ -81,7 +81,7 @@ if not logger.handlers:
         os.makedirs(logs_dir, exist_ok=True)
         log_filename = os.path.join(logs_dir, f"log-{datetime.now().strftime('%Y-%m-%d')}.txt")
         f_handler = RotatingFileHandler(log_filename, maxBytes=5 * 1024 * 1024, backupCount=5, encoding='utf-8')
-        f_file_format = logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S')
+        f_file_format = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%H:%M:%S')
         f_handler.setFormatter(f_file_format)
         logger.addHandler(f_handler)
         logger.info(f"[logging] File log: {log_filename}")
@@ -116,7 +116,7 @@ def format_string_for_log(input_string):
 
 
 def log_save(message):
-    logger.error(message)
+    logger.error(_format_log_message(message))
 
 
 LAST_CHAT_ID_FILE = os.path.join('state', 'last_chat_id.txt')
@@ -141,17 +141,30 @@ def get_last_chat_id():
     return None
 
 
-def log(message):
+def _format_log_message(message):
     if type(message) is dict:
-        output = json.dumps(message, indent=2)
-    elif type(message) is list:
-        output = str(np.array(message, dtype=object))
-    elif type(message) is str:
-        output = message
-    else:
-        output = str(message)
+        return json.dumps(message, indent=2)
+    if type(message) is list:
+        return str(np.array(message, dtype=object))
+    if type(message) is str:
+        return message
+    return str(message)
 
-    logger.info(output)
+
+def log(message):
+    logger.info(_format_log_message(message))
+
+
+def log_debug(message):
+    logger.debug(_format_log_message(message))
+
+
+def log_warning(message):
+    logger.warning(_format_log_message(message))
+
+
+def log_error(message):
+    logger.error(_format_log_message(message))
 
 
 def folder_ensure(folder_path):

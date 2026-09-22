@@ -37,7 +37,7 @@ def close_popup(*args):
         x = close_popup_button[0]
         y = close_popup_button[1]
         click(x, y)
-        log('Regular popup closed')
+        log(f'Regular popup closed at ({x}, {y})')
 
     # closes special offer popup when it appears
     sleep(0.3)

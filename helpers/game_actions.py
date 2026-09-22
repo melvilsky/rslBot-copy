@@ -3,9 +3,10 @@ import os
 
 import pyautogui
 
-from helpers.logging_utils import log, sleep
+from helpers.logging_utils import log, log_debug, log_error, log_warning, sleep
 from helpers.mouse import await_click, click, random_easying, tap_to_continue
 from helpers.popups import click_on_progress_info
+from helpers.screen import debug_save_screenshot
 from helpers.vision import find_needle_battles, pixel_check_new, pixel_wait, pixels_every, pixels_wait
 
 def waiting_battle_end_regular(msg, timeout=5, x=20, y=46):
@@ -56,7 +57,7 @@ def dungeons_click_stage_select():
     sleep(2)
 
 def dungeons_continue_battle():
-    log('Function: dungeons_continue_battle')
+    log_debug('Function: dungeons_continue_battle')
     # @TODO Duplication
     STAGE_ENTER = [890, 200, [93, 25, 27]]
     if pixels_wait([STAGE_ENTER], msg="await 'Stage enter'", mistake=10, wait_limit=2)[0]:
@@ -68,7 +69,7 @@ def dungeons_continue_battle():
     sleep(1)
 
 def dungeons_is_able():
-    log('Function: dungeons_is_able')
+    log_debug('Function: dungeons_is_able')
     # @TODO Duplication
     STAGE_ENTER = [890, 200, [93, 25, 27]]
     return pixel_check_new(STAGE_ENTER, mistake=10)
@@ -143,7 +144,7 @@ def enable_super_raid():
     Enabled:  (654, 336) RGB (108, 237, 255)
     Disabled: (654, 336) RGB (8, 20, 24)
     """
-    log('Function: enable_super_raid')
+    log_debug('Function: enable_super_raid')
 
     x, y = 654, 336
     rgb_enabled = [108, 237, 255]
@@ -161,7 +162,7 @@ def enable_super_raid():
                 rgb_disabled = coord.get('rgb_disabled', rgb_disabled)
                 mistake = coord.get('mistake', mistake)
     except Exception as e:
-        log(f'WARNING: Failed to load iron_twins.json: {e}, using defaults')
+        log_warning(f'Failed to load iron_twins.json: {e}, using defaults')
 
     def check_state():
         """Returns: True=enabled, False=disabled, None=transitional"""
@@ -171,17 +172,17 @@ def enable_super_raid():
         matches_on = all(d <= mistake for d in diff_on)
         matches_off = all(d <= mistake for d in diff_off)
 
-        log(f"SUPER RAIDS pixel ({x}, {y}): actual={actual}")
-        log(f"  vs enabled  {rgb_enabled}: diff={diff_on}, match={matches_on}")
-        log(f"  vs disabled {rgb_disabled}: diff={diff_off}, match={matches_off}")
+        log_debug(f"SUPER RAIDS pixel ({x}, {y}): actual={actual}")
+        log_debug(f"  vs enabled  {rgb_enabled}: diff={diff_on}, match={matches_on}")
+        log_debug(f"  vs disabled {rgb_disabled}: diff={diff_off}, match={matches_off}")
 
         if matches_on:
-            log("  → ENABLED")
+            log_debug("  → ENABLED")
             return True
         if matches_off:
-            log("  → DISABLED")
+            log_debug("  → DISABLED")
             return False
-        log("  → TRANSITIONAL (screen still loading)")
+        log_debug("  → TRANSITIONAL (screen still loading)")
         return None
 
     # Ждём пока экран загрузится — пиксель должен стать либо enabled, либо disabled
@@ -196,7 +197,10 @@ def enable_super_raid():
         waited += 0.5
 
     if state is None:
-        log(f'WARNING: pixel did not settle after {max_wait}s, forcing click')
+        log_warning(
+            f'SUPER RAIDS pixel did not settle after {max_wait}s at ({x}, {y}), '
+            f'forcing click'
+        )
 
     if state is True:
         log('SUPER RAIDS already enabled — no click needed')
@@ -220,29 +224,44 @@ def enable_super_raid():
         log('SUPER RAIDS enabled successfully after 2nd click')
         return True
 
-    log('ERROR: SUPER RAIDS failed to enable after 2 attempts')
+    actual = _read_pixel_color(x, y)
+    shot = debug_save_screenshot(suffix_name='super-raids-enable-failed')
+    log_error(
+        f'SUPER RAIDS failed to enable after 2 attempts at ({x}, {y}): '
+        f'actual={actual}, enabled={rgb_enabled}, disabled={rgb_disabled}; '
+        f'continuing with SUPER RAIDS state unknown; screenshot={shot}'
+    )
     return False
 
 def disable_auto_climb():
-    log('Function: disable_auto_climb')
+    log_debug('Function: disable_auto_climb')
     checkbox_toggle(710, 410, state=False)
 
 def enable_start_on_auto():
-    log('Function: enable_start_on_auto')
+    log_debug('Function: enable_start_on_auto')
     P_START_ON_AUTO_CHECKBOX = [710, 406, [13, 58, 81]]
     await_click([P_START_ON_AUTO_CHECKBOX], mistake=10, wait_limit=1)
 
 def enable_auto_play(*args):
-    log('Function: enable_auto_play')
+    log_debug('Function: enable_auto_play')
     AUTO_PLAY_BUTTON = [49, 486]
     sleep(2)
     click(AUTO_PLAY_BUTTON[0], AUTO_PLAY_BUTTON[1])
 
 def detect_pause_button():
-    log('Function: detect_pause_button')
     # @TODO Duplicate
     BUTTON_PAUSE_ICON = [866, 66, [216, 206, 156]]
-    return pixel_check_new(BUTTON_PAUSE_ICON, mistake=10)
+    x, y, expected = BUTTON_PAUSE_ICON
+    actual = [c for c in pyautogui.pixel(x, y)]
+    found = all(abs(actual[i] - expected[i]) <= 10 for i in range(3))
+    if found:
+        log_debug(f'pause icon found at ({x}, {y})')
+    else:
+        log(
+            f'pause icon not found at ({x}, {y}), '
+            f'actual={actual}, expected={list(expected)}'
+        )
+    return found
 
 def calculate_win_rate(w, l):
     t = w + l

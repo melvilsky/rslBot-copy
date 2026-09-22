@@ -40,8 +40,10 @@ def debug_save_screenshot(
     time = get_time_for_log(s='-')
     folder_ensure(output_debug)
     file_name = format_string_for_log(f"{time}-{str(suffix_name).lower()}" if suffix_name else time)
+    path = output_debug / f"{file_name}.{ext}"
     screenshot = pyautogui.screenshot(region=region)
-    screenshot.save(str(output_debug / f"{file_name}.{ext}"), quality=quality)
+    screenshot.save(str(path), quality=quality)
+    return str(path)
 
 def draw_debug_grid(img_np, gap_size=100):
     """Рисует сетку с координатами поверх изображения (BGR numpy array)."""

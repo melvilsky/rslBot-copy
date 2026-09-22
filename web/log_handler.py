@@ -17,5 +17,5 @@ def install_web_log_handler():
     """Attach WebSSEHandler to the RSLBot logger so logs stream to the web UI."""
     logger = logging.getLogger('RSLBot')
     handler = WebSSEHandler()
-    handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
+    handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%H:%M:%S'))
     logger.addHandler(handler)

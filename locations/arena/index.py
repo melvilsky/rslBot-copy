@@ -142,6 +142,27 @@ def is_team_setup_visible():
         log(f"Team Setup popup score: {matched}/{len(TEAM_SETUP_POINTS)} (need {TEAM_SETUP_MIN_SCORE})")
     return matched >= TEAM_SETUP_MIN_SCORE
 
+
+def describe_team_setup_mismatch():
+    """Actual RGB for each team-setup point; used when the screen is not detected."""
+    if not TEAM_SETUP_POINTS:
+        return 'no TEAM_SETUP_POINTS configured'
+    matched = 0
+    parts = []
+    for index, point in enumerate(TEAM_SETUP_POINTS):
+        x, y, expected = point[0], point[1], point[2]
+        actual = [c for c in pyautogui.pixel(x, y)]
+        ok = all(abs(actual[i] - expected[i]) <= TEAM_SETUP_MISTAKE for i in range(3))
+        if ok:
+            matched += 1
+        parts.append(
+            f"p{index + 1}=({x},{y}) expected={list(expected)} actual={actual} match={ok}"
+        )
+    return (
+        f"score={matched}/{len(TEAM_SETUP_POINTS)} need={TEAM_SETUP_MIN_SCORE}; "
+        + "; ".join(parts)
+    )
+
 def is_defeat_screen_visible():
     if DEFEAT_POINTS:
         matched = 0
@@ -626,11 +647,13 @@ class ArenaFactory(Location):
                 if not self._wait_for_free_refresh_available():
                     return False
             else:
+                shot = debug_save_screenshot(suffix_name='arena-refresh-timeout-unconfirmed')
                 self.log(
-                    f'Refresh button wait timeout ({ARENA_REFRESH_WAIT_LIMIT}s) '
-                    f'without confirmed cooldown, stopping'
+                    f'Refresh timeout ({ARENA_REFRESH_WAIT_LIMIT}s): cooldown not confirmed, '
+                    f'screen={observation.state.name}, signals={list(observation.signals)}, '
+                    f'screenshot={shot}',
+                    level='error',
                 )
-                debug_save_screenshot(suffix_name='arena-refresh-timeout-unconfirmed')
                 self.abort_reason = 'refresh button not found and cooldown not confirmed'
                 self.run_outcome = RunOutcome.ABORTED_UNKNOWN_SCREEN
                 self.terminated = True
@@ -1134,9 +1157,15 @@ class ArenaFactory(Location):
                 if is_team_setup_visible():
                     self.log('Team Setup screen detected')
                 else:
-                    self.log('Team Setup screen not detected within timeout, proceeding anyway')
+                    diag = describe_team_setup_mismatch()
+                    shot = debug_save_screenshot(suffix_name='team-setup-timeout')
+                    self.log(
+                        f'Team Setup screen not detected within timeout, proceeding anyway; '
+                        f'{diag}; screenshot={shot}',
+                        level='warning',
+                    )
 
-            self.log('Function: enable_quick_battle')
+            self.log('Function: enable_quick_battle', level='debug')
             _qb_mistake = get_mistake(_tag_data, 'quick_battle', 10)
             await_click([self.quick_battle_coord], mistake=_qb_mistake, wait_limit=1)
 
@@ -1160,7 +1189,12 @@ class ArenaFactory(Location):
                 battle_in_progress = battle_active_coord and pixel_check_new(battle_active_coord, mistake=_ba_mistake, label="battle_active_check")
                 results_visible = pixel_check_new(self.tap_to_continue_coord, mistake=_ttc_mistake, label="tap_to_continue_active") or is_results_screen_visible()
                 if battle_in_progress or results_visible:
-                    self.log('Battle active or finished (tap to continue visible)')
+                    if battle_in_progress and results_visible:
+                        self.log('Battle signal: active timer AND results/tap-to-continue')
+                    elif battle_in_progress:
+                        self.log('Battle signal: active timer (battle in progress)')
+                    else:
+                        self.log('Battle signal: results/tap-to-continue visible')
                     battle_started = True
                     break
                     
@@ -1220,8 +1254,12 @@ class ArenaFactory(Location):
                 else:
                     # UNKNOWN не даёт права на Escape (план, Этап 2): только
                     # диагностика и явная ошибка.
-                    self.log('Fallback: Unknown state. Saving diagnostics and stopping without blind Escape.')
-                    debug_save_screenshot(suffix_name='tag-battle-start-unknown')
+                    shot = debug_save_screenshot(suffix_name='tag-battle-start-unknown')
+                    self.log(
+                        f'Fallback: Unknown state after battle start ({current_screen}); '
+                        f'stopping without blind Escape; screenshot={shot}',
+                        level='error',
+                    )
                     self.abort_reason = 'unknown screen after battle start'
                     self.run_outcome = RunOutcome.ABORTED_UNKNOWN_SCREEN
                     self.terminated = True
@@ -1237,10 +1275,15 @@ class ArenaFactory(Location):
             }
             r_ttc = self.awaits([E_TAP_TO_CONTINUE, self.E_TERMINATE, self.E_TAG_AWAIT_TIMEOUT], interval=2)
             if r_ttc and r_ttc.get('name') == 'TagAwaitTimeout':
-                self.log(f'Tap to continue wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), attempting recovery')
+                shot = debug_save_screenshot(suffix_name='tag-await-timeout')
+                self.log(
+                    f'Tap to continue wait timeout ({ARENA_TAG_AWAIT_LIMIT}s), '
+                    f'attempting recovery; screenshot={shot}',
+                    level='warning',
+                )
                 recovered = self._recover_from_tag_timeout(_rta_mistake)
                 if not recovered:
-                    self.log('Recovery failed, stopping')
+                    self.log('Recovery failed, stopping', level='error')
                     self.terminated = True
                 break
 
@@ -1347,7 +1390,13 @@ class ArenaFactory(Location):
                     if is_team_setup_visible():
                         self.log('Team Setup screen detected')
                     else:
-                        self.log('Team Setup screen not detected within timeout, proceeding anyway')
+                        diag = describe_team_setup_mismatch()
+                        shot = debug_save_screenshot(suffix_name='team-setup-timeout')
+                        self.log(
+                            f'Team Setup screen not detected within timeout, proceeding anyway; '
+                            f'{diag}; screenshot={shot}',
+                            level='warning',
+                        )
 
                 enable_start_on_auto()
 
@@ -1367,7 +1416,12 @@ class ArenaFactory(Location):
                     battle_in_progress = battle_active_coord and pixel_check_new(battle_active_coord, mistake=_ba_mistake, label="battle_active_check")
                     results_visible = is_results_screen_visible()
                     if battle_in_progress or results_visible:
-                        self.log('Battle active or already finished')
+                        if battle_in_progress and results_visible:
+                            self.log('Battle signal: active timer AND results screen')
+                        elif battle_in_progress:
+                            self.log('Battle signal: active timer (battle in progress)')
+                        else:
+                            self.log('Battle signal: results screen visible')
                         battle_started = True
                         break
 
@@ -1430,8 +1484,12 @@ class ArenaFactory(Location):
                     else:
                         # UNKNOWN не даёт права на Escape (план, Этап 2): только
                         # диагностика и явная ошибка.
-                        self.log('Fallback: Unknown state. Saving diagnostics and stopping without blind Escape.')
-                        debug_save_screenshot(suffix_name='classic-battle-start-unknown')
+                        shot = debug_save_screenshot(suffix_name='classic-battle-start-unknown')
+                        self.log(
+                            f'Fallback: Unknown state after battle start ({current_screen}); '
+                            f'stopping without blind Escape; screenshot={shot}',
+                            level='error',
+                        )
                         self.abort_reason = 'unknown screen after battle start'
                         self.run_outcome = RunOutcome.ABORTED_UNKNOWN_SCREEN
                         self.terminated = True

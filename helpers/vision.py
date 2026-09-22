@@ -137,9 +137,9 @@ def pixels_wait(pixels, msg=None, timeout=5, mistake=0, wait_limit=None, debug=F
         counter += timeout
         checked_pixels = restart()
         if has_wait_limit and counter >= wait_limit:
+            log(f"Waiting timeout after {counter}s: {msg or 'unnamed'}")
             break
 
-        log(str(counter) + ' seconds left')
         sleep(timeout)
 
     if is_debug_mode():

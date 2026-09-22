@@ -25,10 +25,8 @@ from helpers.vision import (
     find_needle_refill_ruby,
     find_victory_opponent_left,
     pixel_check_new,
-    pixels_every,
     pixels_wait,
     rgb_check,
-    same_pixels_line,
 )
 from helpers.coordinates import get_coordinate, get_mistake, load_coordinates
 from helpers.time_mgr import TimeMgr
@@ -117,6 +115,11 @@ PAID_REFILL_LIMIT = 1
 ARCHIVE_PATTERN_FIRST = [1, 2, 2]
 LIVE_ARENA_TOKEN_PACK = 5
 MAX_LIVE_ARENA_REENTRIES = 2
+MATCHMAKING_TIMEOUT_S = 90
+MAX_MATCHMAKING_ATTEMPTS = 3
+CANT_FIND_OPPONENT_MISTAKE = 15
+MATCHMAKING_TIMEOUT_NAME = 'MatchmakingTimeout'
+MATCHMAKING_WAITING_NAME = 'MatchmakingWaiting'
 
 # Сундук прогресса (награда за 35 побед) — попап появляется после нажатия "поиск соперника"
 PROGRESS_CHEST = [483, 226, [109, 50, 42]]
@@ -177,11 +180,8 @@ class ArenaLive(Location):
         # LiveArena related events
         self.E_CANT_FIND_OPPONENT = {
             "name": "CantFindAnOpponent",
-            "expect": lambda: pixels_every(
-                same_pixels_line(cant_find_opponent_button_cancel), lambda p: pixel_check_new(p, mistake=5)
-            ),
-            "callback": self._cb_cant_find_opponent,
-            "blocking": False,
+            "expect": self._is_cant_find_opponent_visible,
+            "blocking": True,
             "interval": 3,
         }
         self.E_OPPONENT_LEFT = {
@@ -279,11 +279,7 @@ class ArenaLive(Location):
         self.current['next_char'] = self.current['current_char']
 
     def _cb_cant_find_opponent(self, *args):
-        _x = cant_find_opponent_button_cancel[0]
-        _y = cant_find_opponent_button_cancel[1]
-        click(_x, _y)
-        sleep(1)
-        self._click_on_find_opponent()
+        self._retry_find_opponent_after_no_match()
 
     def _report(self):
         from helpers.battle_stats import load_stats
@@ -436,11 +432,137 @@ class ArenaLive(Location):
     def _is_find_opponent_visible(self):
         return pixel_check_new(find_opponent, mistake=20, label='find_opponent')
 
+    def _is_cant_find_opponent_visible(self):
+        return (
+            pixel_check_new(
+                cant_find_opponent_button_cancel,
+                mistake=CANT_FIND_OPPONENT_MISTAKE,
+                label='cant_find_cancel',
+            )
+            or pixel_check_new(
+                cant_find_opponent_button_find,
+                mistake=CANT_FIND_OPPONENT_MISTAKE,
+                label='cant_find_find',
+            )
+        )
+
     def _is_match_started(self):
         return (
             pixel_check_new(first, mistake=10, label='pick_first')
             or pixel_check_new(second, mistake=10, label='pick_second')
         )
+
+    def _match_start_event_name(self):
+        if pixel_check_new(second, mistake=10, label='pick_second'):
+            return self.E_PICK_SECOND['name']
+        if pixel_check_new(first, mistake=10, label='pick_first'):
+            return self.E_PICK_FIRST['name']
+        return None
+
+    def _retry_find_opponent_after_no_match(self):
+        click(cant_find_opponent_button_cancel[0], cant_find_opponent_button_cancel[1])
+        sleep(1)
+        if self._is_match_started():
+            return True
+        if self._is_cant_find_opponent_visible():
+            click(cant_find_opponent_button_find[0], cant_find_opponent_button_find[1])
+            sleep(1)
+            return True
+        return self._click_on_find_opponent(abort_on_fail=False, wait_limit=8)
+
+    def _matchmaking_start_events(self):
+        heartbeat = {
+            "name": MATCHMAKING_WAITING_NAME,
+            "expect": lambda: True,
+            "blocking": False,
+            "delay": 30,
+            "interval": 30,
+            "callback": lambda *args: self.log('Still searching for opponent'),
+        }
+        timeout = {
+            "name": MATCHMAKING_TIMEOUT_NAME,
+            "expect": lambda: True,
+            "delay": MATCHMAKING_TIMEOUT_S,
+            "interval": 1,
+            "limit": 1,
+        }
+        return [
+            self.E_PICK_FIRST,
+            self.E_PICK_SECOND,
+            self.E_CANT_FIND_OPPONENT,
+            self.E_INDICATOR_INACTIVE,
+            heartbeat,
+            timeout,
+        ]
+
+    def _abort_matchmaking(self, reason='live arena matchmaking timeout'):
+        self.log('Aborting Live Arena so the preset can continue')
+        self.abort_reason = reason
+        self.terminate()
+
+    def _wait_for_match_start(self):
+        """Wait for pick phase. Time out instead of blocking the rest of the preset."""
+        for attempt in range(1, MAX_MATCHMAKING_ATTEMPTS + 1):
+            if self.break_loops or self.terminated:
+                return None
+
+            result = self.awaits(events=self._matchmaking_start_events(), interval=.1)
+            name = result['name'] if result else self.EVENT_NOT_FOUND
+            self.log(name)
+
+            if name in (self.E_PICK_FIRST['name'], self.E_PICK_SECOND['name']):
+                return name
+
+            if name == self.E_INDICATOR_INACTIVE['name']:
+                if not self.terminated:
+                    self.terminate()
+                return None
+
+            if name == self.E_CANT_FIND_OPPONENT['name']:
+                self.log(
+                    f'No opponent found (attempt {attempt}/{MAX_MATCHMAKING_ATTEMPTS})'
+                )
+                if attempt >= MAX_MATCHMAKING_ATTEMPTS:
+                    break
+                self._retry_find_opponent_after_no_match()
+                started = self._match_start_event_name()
+                if started:
+                    return started
+                continue
+
+            if name in (MATCHMAKING_TIMEOUT_NAME, self.EVENT_NOT_FOUND):
+                shot = debug_save_screenshot(suffix_name='live-arena-matchmaking-timeout')
+                self.log(
+                    f'Matchmaking timeout after {MATCHMAKING_TIMEOUT_S}s '
+                    f'(attempt {attempt}/{MAX_MATCHMAKING_ATTEMPTS}); '
+                    f'screenshot={shot}',
+                    level='warning',
+                )
+                if self._is_match_started():
+                    started = self._match_start_event_name()
+                    if started:
+                        return started
+                if self._is_cant_find_opponent_visible() or self._is_find_opponent_visible():
+                    if attempt >= MAX_MATCHMAKING_ATTEMPTS:
+                        break
+                    self._retry_find_opponent_after_no_match()
+                    started = self._match_start_event_name()
+                    if started:
+                        return started
+                    continue
+                self.log('Search screen looks stuck; not clicking blindly', level='warning')
+                self._abort_matchmaking()
+                return None
+
+            self.log(f'Unexpected matchmaking event: {name}')
+            self._abort_matchmaking(f'live arena unexpected matchmaking event: {name}')
+            return None
+
+        self.log(
+            f'No opponent after {MAX_MATCHMAKING_ATTEMPTS} attempts'
+        )
+        self._abort_matchmaking()
+        return None
 
     def _resume_after_progress_chest(self):
         """After the 35-win chest, recover lobby/search instead of aborting leftover runs."""
@@ -531,10 +653,19 @@ class ArenaLive(Location):
                     self.log(f"ERROR checking pixel after failure: {e}")
 
             if abort_on_fail:
-                self.log('Find opponent button not found — aborting')
+                shot = debug_save_screenshot(suffix_name='live-arena-find-opponent-missing')
+                self.log(
+                    f'Find opponent button not found — aborting; screenshot={shot}',
+                    level='error',
+                )
                 self.terminate()
             else:
-                self.log('Find opponent button not found, not aborting remaining runs')
+                shot = debug_save_screenshot(suffix_name='live-arena-find-opponent-missing')
+                self.log(
+                    f'Find opponent button not found, not aborting remaining runs; '
+                    f'screenshot={shot}',
+                    level='warning',
+                )
             return False
 
         return True
@@ -766,12 +897,6 @@ class ArenaLive(Location):
 
             return self.current['next_char']
 
-        def await_start_events():
-            return self.awaits(
-                events=[self.E_PICK_FIRST, self.E_PICK_SECOND, self.E_CANT_FIND_OPPONENT, self.E_INDICATOR_INACTIVE],
-                interval=.1
-            )
-
         def await_stage_1():
             return self.awaits(events=[self.E_STAGE_1, self.E_OPPONENT_LEFT])
 
@@ -787,11 +912,12 @@ class ArenaLive(Location):
         def await_choosing_leader():
             return self.awaits(events=[self.E_CHOOSING_LEADER, self.E_OPPONENT_LEFT])
 
-        start_events = await_start_events()
-        self.log(start_events['name'])
+        start_events_name = self._wait_for_match_start()
+        if start_events_name is None:
+            return
 
         pattern = ARCHIVE_PATTERN_FIRST[:]
-        if self.E_PICK_SECOND['name'] == start_events['name']:
+        if self.E_PICK_SECOND['name'] == start_events_name:
             pattern.reverse()
 
         stage_1_events = await_stage_1()
