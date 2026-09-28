@@ -137,8 +137,9 @@ class Location(Foundation):
     def report(self):
         report_list = self.report_predicate() if self.report_predicate else []
 
-        if len(self.duration.durations):
-            report_list.append(f"Duration: {self.duration.get_total()}")
+        duration = self._report_duration()
+        if duration is not None:
+            report_list.append(f"Duration: {duration}")
 
         # Old
         # if self.run_counter:
@@ -148,6 +149,9 @@ class Location(Foundation):
             report_list = [f"***{self.NAME}***"] + report_list
 
         return '\n'.join(report_list)
+
+    def _report_duration(self):
+        return self.duration.get_total() if self.duration.durations else None
 
     def enter(self):
         self.app.prepare(calibrate=False)
@@ -193,8 +197,14 @@ class Location(Foundation):
             return icon
         return '⚠️'
 
+    def _finish_duration(self):
+        return self.duration.get_last()
+
+    def _after_duration_end(self):
+        pass
+
     def _build_finish_messages(self, outcome):
-        duration = self.duration.get_last()
+        duration = self._finish_duration()
         if self.abort_reason:
             text = (
                 f"Aborted: {self.NAME} | {self.abort_reason}"
@@ -217,6 +227,7 @@ class Location(Foundation):
     def finish(self, outcome=None):
         close_popup_recursive()
         self.duration.end()
+        self._after_duration_end()
 
         if outcome is None:
             outcome = self.run_outcome or RunOutcome.DONE

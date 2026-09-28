@@ -1,6 +1,15 @@
 import queue as queue_module
 import threading
+import time
 import uuid as uuid_module
+
+try:
+    from telegram.error import NetworkError
+except ImportError:
+    NetworkError = None
+
+
+MESSAGE_SEND_ATTEMPTS = 3
 
 
 class MessageContext:
@@ -32,7 +41,17 @@ class TelegramMessageContext(MessageContext):
                 kb_row = [InlineKeyboardButton(btn['text'], callback_data=btn['callback_data']) for btn in row]
                 keyboard.append(kb_row)
             kwargs['reply_markup'] = InlineKeyboardMarkup(keyboard)
-        return self.update.message.reply_text(text, **kwargs)
+        for attempt in range(MESSAGE_SEND_ATTEMPTS):
+            try:
+                return self.update.message.reply_text(text, **kwargs)
+            except Exception as exc:
+                if (
+                    NetworkError is None
+                    or not isinstance(exc, NetworkError)
+                    or attempt == MESSAGE_SEND_ATTEMPTS - 1
+                ):
+                    raise
+                time.sleep(1)
 
     def reply_photo(self, photo_bytes, caption=None):
         return self.context.bot.send_photo(

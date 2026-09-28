@@ -1,10 +1,15 @@
 import json
+import importlib.util
 import sys
+import tempfile
 import types
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+from classes.Duration import Duration
 
 
 def module(name, **values):
@@ -477,6 +482,75 @@ class LiveArenaMatchmakingTests(unittest.TestCase):
         arena.abort_reason = 'live arena matchmaking timeout'
 
         self.assertFalse(arena._should_reenter_live_arena())
+
+
+class LiveArenaDailySummaryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        path = Path(__file__).parents[1] / 'helpers' / 'battle_stats.py'
+        spec = importlib.util.spec_from_file_location('battle_stats_daily_summary_test', path)
+        self.stats = importlib.util.module_from_spec(spec)
+        common = types.ModuleType('helpers.common')
+        common.folder_ensure = MagicMock()
+        with patch.dict(sys.modules, {'helpers.common': common}):
+            spec.loader.exec_module(self.stats)
+        self.stats_path = str(Path(self.temp_dir.name) / 'battle_stats.json')
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def arena(self, started, seconds):
+        arena = ArenaLive.__new__(ArenaLive)
+        arena.app = SimpleNamespace(current_player_name='Lema')
+        arena.duration = Duration()
+        arena.duration.durations = [[started, started + timedelta(seconds=seconds)]]
+        arena.results = []
+        return arena
+
+    def test_zero_battle_rerun_keeps_all_battles_and_total_time(self):
+        first = self.arena(datetime(2026, 9, 28, 9, 4, 33), 4851)
+        second = self.arena(datetime(2026, 9, 28, 10, 25, 24), 25)
+
+        with patch.dict(sys.modules, {'helpers.battle_stats': self.stats}), \
+                patch.object(self.stats, '_get_file_path', return_value=self.stats_path), \
+                patch.object(self.stats, '_get_utc_date', return_value='2026-09-28'), \
+                patch('locations.live_arena.index.calculate_win_rate', return_value='40%'):
+            self.stats.update_stats('arena_live', {'wins': 8, 'losses': 12}, 'Lema')
+            first._after_duration_end()
+            second._after_duration_end()
+
+            self.assertEqual(second._finish_duration(), '1:21:16')
+            self.assertEqual(second._report_duration(), '1:21:16')
+            self.assertEqual(
+                second._format_run_battle_summary(),
+                '20 battles · 8W / 12L · WR 40%',
+            )
+            self.assertEqual(second._report(), ['Battles: 20 (8W / 12L, WR: 40%)'])
+            self.assertEqual(
+                self.stats.load_stats('arena_live', 'Lema')['duration_seconds'],
+                4876,
+            )
+            self.assertEqual(self.stats.load_stats('arena_live', 'Other'), {})
+
+    def test_duration_totals_are_separate_by_profile_and_utc_day(self):
+        with patch.object(self.stats, '_get_file_path', return_value=self.stats_path), \
+                patch.object(self.stats, '_get_utc_date', return_value='2026-09-28'):
+            self.stats.record_duration('arena_live', 60, 'Lema')
+            self.stats.record_duration('arena_live', 30, 'Other')
+            self.assertEqual(
+                self.stats.load_stats('arena_live', 'Lema')['duration_seconds'], 60
+            )
+            self.assertEqual(
+                self.stats.load_stats('arena_live', 'Other')['duration_seconds'], 30
+            )
+
+        with patch.object(self.stats, '_get_file_path', return_value=self.stats_path), \
+                patch.object(self.stats, '_get_utc_date', return_value='2026-09-29'):
+            self.assertEqual(self.stats.load_stats('arena_live', 'Lema'), {})
+            self.stats.record_duration('arena_live', 5, 'Lema')
+            self.assertEqual(
+                self.stats.load_stats('arena_live', 'Lema')['duration_seconds'], 5
+            )
 
 
 if __name__ == '__main__':

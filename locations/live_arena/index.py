@@ -2,7 +2,7 @@ import pyautogui
 import pause
 import copy
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from PIL import Image, ImageDraw
 
 from helpers.common import (
@@ -290,11 +290,47 @@ class ArenaLive(Location):
         losses = stats.get('losses', 0)
         t = wins + losses
         if t:
-            str_battles = f"Battles: {str(t)}"
-            str_wr = f"(WR: {calculate_win_rate(wins, losses)})"
-            res_list.append(f"{str_battles} {str_wr}")
+            res_list.append(
+                f"Battles: {t} ({wins}W / {losses}L, "
+                f"WR: {calculate_win_rate(wins, losses)})"
+            )
 
         return res_list
+
+    def _format_run_battle_summary(self):
+        from helpers.battle_stats import load_stats
+        profile = getattr(self.app, 'current_player_name', None)
+        stats = load_stats('arena_live', profile_name=profile)
+        wins = stats.get('wins', 0)
+        losses = stats.get('losses', 0)
+        battles = wins + losses
+        if battles:
+            return f'{battles} battles · {wins}W / {losses}L · WR {calculate_win_rate(wins, losses)}'
+        return super()._format_run_battle_summary()
+
+    def _after_duration_end(self):
+        from helpers.battle_stats import record_duration
+        profile = getattr(self.app, 'current_player_name', None)
+        start, end = self.duration.durations[-1]
+        self._finish_total_duration_seconds = record_duration(
+            'arena_live', (end - start).total_seconds(), profile_name=profile
+        )
+
+    def _finish_duration(self):
+        seconds = getattr(self, '_finish_total_duration_seconds', None)
+        if seconds is None:
+            return super()._finish_duration()
+        return str(timedelta(seconds=int(seconds)))
+
+    def _report_duration(self):
+        from helpers.battle_stats import load_stats
+        profile = getattr(self.app, 'current_player_name', None)
+        seconds = load_stats('arena_live', profile_name=profile).get('duration_seconds', 0)
+        if self.duration.durations:
+            start, end = self.duration.durations[-1]
+            if start is not None and end is None:
+                seconds += max(0, (datetime.utcnow() - start).total_seconds())
+        return str(timedelta(seconds=int(seconds))) if seconds else None
 
     def _enter(self):
         # Additional check for avoiding further proceeding

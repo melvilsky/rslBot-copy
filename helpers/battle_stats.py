@@ -105,6 +105,17 @@ def record_loss(location_key, profile_name=None):
     _save_all(data)
 
 
+def record_duration(location_key, seconds, profile_name=None):
+    """Add the elapsed time of a completed run to today's profile statistics."""
+    data = _clean_old_dates(_load_all())
+    date = _get_utc_date()
+    profile = _resolve_profile(profile_name)
+    entry = _ensure_path(data, profile, location_key, date)
+    entry['duration_seconds'] = entry.get('duration_seconds', 0) + max(0, seconds)
+    _save_all(data)
+    return entry['duration_seconds']
+
+
 def record_win_loss(location_key, sub_key, is_win, profile_name=None):
     """
     Записывает результат для локации с подкатегориями (dungeons, etc.).

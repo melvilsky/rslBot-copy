@@ -10,10 +10,6 @@ try:
 except ImportError:
     NetworkError = None
 
-MAX_RETRIES = 3
-DELAY = 1
-
-
 EMULATE_NETWORK_ERROR = False
 
 class Task:
@@ -50,7 +46,7 @@ class TaskManager:
         elif _type == 'sync':
             self.run(task)
 
-    def run(self, task, retry=True):
+    def run(self, task):
         global EMULATE_NETWORK_ERROR
         self.current_task_name = task.name
 
@@ -73,8 +69,6 @@ class TaskManager:
             if is_network_error:
                 error = f"NetworkError: {e}"
                 log(error)
-                if retry:
-                    self.run(task, retry=False)
             else:
                 error = traceback.format_exc()
                 log_save(error)
