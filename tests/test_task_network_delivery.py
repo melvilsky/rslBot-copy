@@ -6,7 +6,7 @@ import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from classes.EventDispatcher import EventDispatcher
 from classes.MessageContext import TelegramMessageContext
@@ -56,8 +56,7 @@ class TaskNetworkDeliveryTests(unittest.TestCase):
 
         callback.assert_called_once_with()
         self.assertEqual(reply.call_count, 2)
-        self.assertEqual([call.args[0] for call in reply.call_args_list],
-                         ['1:20:51 | 8W / 12L'] * 2)
+        self.assertEqual(reply.call_args_list, [call('1:20:51 | 8W / 12L')] * 2)
 
     def test_exhausted_send_retries_do_not_restart_the_task(self):
         context, reply = self.context(NetworkFailure('reset'))
